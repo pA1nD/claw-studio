@@ -322,7 +322,43 @@ structure, and starts the loop — all without the chairman touching a terminal 
 - New project appears in Mission Control, loop begins
 - Spec generation failure always surfaces to human for review — never auto-starts from a bad spec
 
-### AI-driven recovery — planned for this milestone
+### Custom review agent prompts — generated per project
+
+The review agent prompts in `ci.yml` are no longer hardcoded. When the system generates
+a project from an idea, it also generates custom agent prompts tailored to that specific
+project — what data it handles, what the performance requirements are, what the security
+surface looks like, what tech stack was chosen.
+
+The Security agent for a supplier tracking tool gets different instructions than the
+Security agent for a payment processor. The Perf agent for a low-volume internal tool
+asks different questions than the Perf agent for a high-frequency API.
+
+**How it works**
+
+When the spec is generated from the idea, Claude extracts:
+- Tech stack and dependencies
+- Data sensitivity (does it handle PII, credentials, financial data?)
+- Performance profile (internal tool vs public API, expected load)
+- Architecture pattern (CLI, web app, API, library)
+- Domain-specific risks
+
+These feed into custom agent prompts written into `ci.yml` at project creation time.
+The agents understand the project before the first PR is opened.
+
+**Example — supplier tracking tool vs payment processor**
+
+```
+Arch (supplier tool):    focus on data model consistency, import/export reliability
+Arch (payment processor): focus on transaction atomicity, audit trail, rollback patterns
+
+Security (supplier tool):    check for accidental PII exposure in logs
+Security (payment processor): BLOCKING on any plaintext financial data, PCI compliance patterns
+
+Perf (supplier tool):    flag unnecessary full-table scans on small datasets
+Perf (payment processor): flag anything that could block the payment critical path
+```
+
+### AI-driven recovery — also introduced here
 
 From v0.5 onwards, the hardcoded check-and-halt approach from v0.1 evolves into an
 intelligent recovery layer. When a check fails, instead of just halting, the loop:
@@ -344,7 +380,8 @@ This is built here because v0.5 introduces the conversational layer — the same
 language interface that handles idea intake also handles recovery suggestions.
 
 ### Done when
-The chairman describes an idea with no technical help and agents are working within 5 minutes
+The chairman describes an idea with no technical help, agents start working within 5 minutes,
+and the review agents in the generated ci.yml are clearly tailored to that specific project
 
 ---
 
