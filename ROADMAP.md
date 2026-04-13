@@ -608,9 +608,38 @@ one git graph.
 - Same bug persists after 2 auto-fix attempts → escalate: *"This one needs you."*
 - Production fully down → loop deprioritises all other work, fixes this first
 
+### Contributor mode — blast through anyone's repo
+
+A second operating mode alongside the full factory. Instead of owning the repo,
+Claw Studio acts as a contributor:
+
+```
+claw contribute --repo someone/their-project
+```
+
+- Forks the repo
+- Reads open issues
+- Implements them one by one on branches
+- Opens PRs against the original repo
+- The repo owner reviews and merges on their own terms
+
+No setup. No admin access. No touching their CI or branch protection.
+Claw Studio brings its own full CI pipeline internally — review agents, quality checks,
+everything runs inside Claw Studio before the PR opens. The PR that arrives is already
+reviewed, tested, and clean.
+
+**Why this is v0.8 and not earlier:** contributor mode requires Claw Studio to own its
+entire CI pipeline internally. No GitHub Actions available — review agents and quality
+gates must run inside the bundled executable (built in v0.6). v0.8 is the first milestone
+where that infrastructure is fully proven in production.
+
+**The vision:** someone opens 50 issues on a Friday. By Monday there are 50 PRs.
+They review what they like and merge.
+
 ### Done when
 A production bug is detected, fixed, and deployed without the chairman doing anything —
-and he can see the whole cycle on the dashboard
+and he can see the whole cycle on the dashboard. Contributor mode successfully opens
+clean, reviewed PRs against a repo Claw Studio has never touched before.
 
 ---
 
