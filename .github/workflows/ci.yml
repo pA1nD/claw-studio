@@ -33,7 +33,7 @@ jobs:
       - run: npm install
       - run: npx tsc --noEmit
 
-  test:
+  ci-test:
     name: Tests
     runs-on: ubuntu-latest
     needs: [lint, typecheck]
@@ -251,7 +251,7 @@ jobs:
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
 
-  test:
+  test-review:
     name: "Test Review"
     needs: [get-context]
     runs-on: self-hosted
@@ -280,14 +280,14 @@ jobs:
   summary:
     name: "Review Summary"
     runs-on: self-hosted
-    needs: [arch, dx, security, perf, test]
+    needs: [arch, dx, security, perf, test-review]
     if: >-
       ${{
         needs.arch.result == 'success' || needs.arch.result == 'failure' ||
         needs.dx.result == 'success' || needs.dx.result == 'failure' ||
         needs.security.result == 'success' || needs.security.result == 'failure' ||
         needs.perf.result == 'success' || needs.perf.result == 'failure' ||
-        needs.test.result == 'success' || needs.test.result == 'failure'
+        needs.test-review.result == 'success' || needs.test-review.result == 'failure'
       }}
     steps:
       - uses: actions/checkout@v4
