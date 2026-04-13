@@ -77,6 +77,17 @@ Once done, mark v0.1 as current and the loop takes over permanently.
 - src/loop/     — orchestrator
 - src/cli/      — claw start, status, pause, resume
 
+## Human steps convention
+
+Issues may contain a `## Human steps` section at the bottom declaring steps that
+cannot be automated. When present:
+
+- **"do these BEFORE"** → walk the human through each step interactively before
+  writing any code. One step at a time. Validate each before proceeding.
+- **"do these AFTER"** → implement first, then walk through the steps at the end.
+
+Keep it conversational. One thing at a time. Plain English. No jargon.
+
 ## Rules
 - Never commit directly to main
 - Never use @ts-ignore or eslint-disable
