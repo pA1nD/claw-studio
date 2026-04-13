@@ -39,9 +39,11 @@ Once done, mark v0.1 as current and the loop takes over permanently.
 - `ROADMAP.md` — exists, current milestone marked (this file)
 - `README.md` — exists
 - `CLAUDE.md` — coding standards and architecture for this project
-- `.github/workflows/ci.yml` — lint, typecheck, tests
-- `.github/workflows/agent-review.yml` — 5 parallel review agents
+- `.github/workflows/ci.yml` — lint, typecheck, tests, and all 5 review agents (one file)
 - `.env.example` — documents required environment variables
+- `package.json` — project scaffold with correct dependencies
+- `tsconfig.json` — strict TypeScript config
+- `.eslintrc.json` — ESLint config for TypeScript
 
 **GitHub labels**
 - `v0.0` — purple, "Milestone 0 — Project Setup"
