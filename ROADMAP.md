@@ -11,7 +11,7 @@
 
 ---
 
-## Current milestone: v0.0 — The Loop
+## Current milestone: v0.1 — The Loop
 
 ---
 
