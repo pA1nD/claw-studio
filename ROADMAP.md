@@ -268,11 +268,35 @@ progress, each with a status light. The aggregate feeling: many things happening
 - Main view: grid of project cards — each showing miniature git graph, current milestone, status
 - Status lights: green (running), amber (needs attention), red (escalated/paused)
 - Click any project → Single Project Dashboard
-- Aggregate stats: total agents working, issues completed today
+- Aggregate stats: total agents working, issues completed today, runners idle vs busy
 - If >50% of projects red → banner: *"Something's up. Check your runners."*
 
+### Runner pool visibility — first introduced here
+Mission Control is the first place where runner capacity becomes visible and relevant.
+With multiple projects running in parallel, the runner pool is the throughput ceiling.
+
+The dashboard shows:
+- Total runners registered
+- Runners currently busy vs idle
+- Jobs queued waiting for a runner
+- Estimated wait time based on current queue depth
+
+**The math:** each project can fire 5 review agents simultaneously. With 10 projects
+and 6 runners, that's up to 50 concurrent jobs against a pool of 6 — 44 queuing.
+The dashboard makes this visible so the human knows why things feel slow.
+
+Runner sizing guidance (shown in the UI):
+- 1 project active: 6 runners comfortable
+- 3-5 projects active: 12-15 runners recommended
+- 10+ projects active: 1 runner per expected concurrent agent (up to hardware limit)
+
+Note: runner scaling is a hardware problem — more runners = more CPU/RAM on the host.
+The right number depends on the machine Claw Studio runs on. v0.6 addresses this
+properly when runners are bundled and auto-sized to available hardware.
+
 ### Done when
-Three projects run simultaneously and are visible from one Mission Control screen
+Three projects run simultaneously and are visible from one Mission Control screen,
+with runner pool status clearly visible
 
 ---
 
@@ -420,6 +444,35 @@ ubuntu-latest runners — GitHub's infrastructure, GitHub's problem. From v0.6 o
 CI moves into the same bundled Docker environment as the agent runners. The containers
 need to include the right language runtimes (Node 20, etc.) for whatever the project
 being built requires.
+
+**Runner auto-sizing — critical for parallel project throughput**
+
+When runners are bundled, Claw Studio must right-size the pool to the hardware it's
+running on. This is not optional — too few runners and projects queue; too many and
+the host runs out of memory and everything slows down.
+
+On first run, Claw Studio measures available hardware and recommends a runner count:
+
+```
+Detected: Apple M3 Max — 16 cores, 48GB RAM
+Each runner uses approximately: 1 core, 2GB RAM
+Recommended runners: 12 (leaves headroom for the OS and dashboard)
+Current setting: 6
+
+Run 10 projects in parallel? You'll need ~20 runners.
+Increase to 12? [Y/n]
+```
+
+The formula is simple: each runner handles one agent job at a time. With 5 review
+agents per PR and N projects active, you need at least 5×N runners to avoid queuing.
+In practice, not all projects fire simultaneously, so 3×N is a reasonable starting point.
+
+The dashboard always shows runner utilisation — if jobs are consistently queuing,
+it suggests increasing the pool. If runners are consistently idle, it suggests
+reducing to free up memory for other things.
+
+Runner scaling is ultimately a hardware problem. Claw Studio surfaces the information
+and makes it easy to adjust — but the ceiling is the machine it runs on.
 
 **GitHub becomes optional**
 - Connect GitHub to sync issues, use existing repos, push to remote, trigger GitHub Actions
