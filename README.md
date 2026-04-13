@@ -85,8 +85,10 @@ Mission Control shows every project at once. Dozens of ideas being built simulta
 
 ## Architecture
 
-Claw Studio is GitHub-native. GitHub is the source of truth, the event bus, and the persistence layer. Nothing custom underneath — just the best tools, wired together properly.
+Claw Studio is GitHub-native through v0.5. From v0.6 — the executable — GitHub becomes an
+optional integration. Everything runs self-contained. No external accounts required.
 
+**v0.1–v0.5 (current)**
 ```
 Claw Studio (Electron)
 ├── Dashboard — live git graph, agent avatars, milestone progress
@@ -104,7 +106,25 @@ Local runners (Docker)
 └── claude -p — implementation and review agents, Max subscription
 ```
 
-No cloud compute costs. No GitHub Actions minutes billing. Everything runs on your machine, powered by your Claude Max subscription.
+**v0.6+ (the executable — self-contained)**
+```
+Claw Studio.app
+├── Dashboard — same living git graph, same agent avatars
+├── Orchestrator — same loop, same state machine
+├── Internal issue store — milestones and issues, no GitHub needed
+├── Bundled Git — local version control, no remote required
+├── Bundled runners — Docker-in-Docker, no GitHub Actions
+├── Bundled CI — lint, typecheck, tests run locally
+└── Internal hosting — live links served locally or one-click deploy
+
+GitHub (optional integration)
+├── Sync issues from existing repos
+├── Push to remote for teams who want it
+└── GitHub Actions for teams already using them
+```
+
+No cloud compute costs. No GitHub Actions minutes billing. No GitHub account required.
+Everything runs on your machine, powered by your Claude Max subscription.
 
 ---
 

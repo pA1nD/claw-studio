@@ -232,26 +232,48 @@ The chairman describes an idea with no technical help and agents are working wit
 ---
 
 ## v0.6 — The Executable
-*Anyone can install it.*
+*Anyone can install it. No third-party accounts required.*
 
-Package everything into a single `.dmg`. No terminal. No Docker Desktop. No manual config.
-The chairman double-clicks and has the full factory running in minutes.
+Package everything into a single `.dmg`. No terminal. No Docker Desktop. No GitHub account.
+No manual config. The chairman double-clicks and has the full factory running in minutes.
+
+This milestone breaks the dependency on GitHub. All third-party tools become optional integrations
+for power users — not requirements. Claw Studio runs entirely self-contained.
 
 ### User stories
-- As a chairman, I double-click a `.dmg` and have the full product running
+- As a chairman, I double-click a `.dmg` and have the full product running — no accounts, no setup
+- As a chairman, I describe an idea and watch it get built without ever hearing the word "GitHub"
 - As a PM, I send the `.dmg` to anyone and they're productive in 5 minutes
-- As IT, I deploy Claw Studio company-wide without any individual needing technical knowledge
+- As IT, I deploy Claw Studio company-wide without any individual needing a GitHub account
+- As a power user, I can optionally connect GitHub to use my existing repos and workflows
 
 ### What it does
+
+**Bundled — no external dependencies required**
 - Single `.dmg` for macOS (Windows `.exe` to follow)
-- Bundles: Electron app, Docker runners, Claude Code CLI, GitHub auth flow
-- First-run wizard: GitHub login → Claude Max auth via `setup-token` → runners start automatically
+- Bundles: Electron app, Docker runners, Claude Code CLI, Git (local), internal issue store
+- First-run wizard: Claude Max auth via `setup-token` → runners start → ready in under 2 minutes
+- Internal version control: Git runs locally, no remote required
+- Internal issue store: milestones, issues, ordering — all managed inside Claw Studio
+- Internal CI: lint, typecheck, tests run in bundled Docker environment
+- Internal review agents: run on bundled local runners — no GitHub Actions
+- Internal hosting: live link served locally, or one-click deploy to a simple platform
 - Auto-update built in
+
+**GitHub becomes optional**
+- Connect GitHub to sync issues, use existing repos, push to remote, trigger GitHub Actions
+- Useful for PMs and developers who already live in GitHub
+- Completely invisible to users who don't want it
+- No feature is locked behind GitHub — everything works without it
+
+**Error handling**
 - Auth failure → guided re-auth, never blank screen
 - Runner down → auto-restart, visible on dashboard, human notified only after 3 failed restarts
+- Update fails → stays on current version, never breaks existing install
 
 ### Done when
-Someone with no technical knowledge installs Claw Studio and runs their first project from scratch
+Someone with no GitHub account, no terminal knowledge, and no technical background installs
+Claw Studio, describes an idea, and watches agents build it — entirely without external services
 
 ---
 
