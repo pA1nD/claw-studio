@@ -372,10 +372,17 @@ for power users — not requirements. Claw Studio runs entirely self-contained.
 - First-run wizard: Claude Max auth via `setup-token` → runners start → ready in under 2 minutes
 - Internal version control: Git runs locally, no remote required
 - Internal issue store: milestones, issues, ordering — all managed inside Claw Studio
-- Internal CI: lint, typecheck, tests run in bundled Docker environment
+- Internal CI: lint, typecheck, tests run in bundled Docker containers — same infrastructure
+  as the agent runners, now also serving as the CI environment
 - Internal review agents: run on bundled local runners — no GitHub Actions
 - Internal hosting: live link served locally, or one-click deploy to a simple platform
 - Auto-update built in
+
+Note on CI containers: in v0.1–v0.5, CI (lint/typecheck/tests) runs on GitHub's hosted
+ubuntu-latest runners — GitHub's infrastructure, GitHub's problem. From v0.6 onwards,
+CI moves into the same bundled Docker environment as the agent runners. The containers
+need to include the right language runtimes (Node 20, etc.) for whatever the project
+being built requires.
 
 **GitHub becomes optional**
 - Connect GitHub to sync issues, use existing repos, push to remote, trigger GitHub Actions
