@@ -252,6 +252,23 @@ Studio becomes something you can show someone.
 | Something broke | *Lost the claw.* |
 | Fixed | *Back.* |
 
+### Human steps lookahead
+
+The dashboard scans all upcoming issues in the current milestone and checks for
+`## Human steps` sections. If any are found, a subtle notice appears:
+
+```
+⚠ Human input needed in 3 issues (~45 min)
+   Issue #6 — Git strategy: 2 steps required
+   View details →
+```
+
+Clicking "View details" shows exactly what steps are coming and approximately when,
+so the human can prepare ahead of time if possible — or at least not be surprised.
+
+The lookahead is passive — it never blocks the loop. It's purely informational.
+The notice dims when the relevant issue starts and disappears once steps are complete.
+
 ### Error handling
 - GitHub API unreachable → show last known state, amber pulse, *"Reconnecting..."*
 - Runner goes offline → agent avatar dims immediately, no crash, no alert unless offline >5 minutes
@@ -393,6 +410,46 @@ Perf (supplier tool):    flag unnecessary full-table scans on small datasets
 Perf (payment processor): flag anything that could block the payment critical path
 ```
 
+### In-UI human step wizard
+
+When an issue with `## Human steps` becomes active, the dashboard doesn't send the
+human to a terminal. A panel slides in from the right — the same drawer used for
+drill-down — and an agent walks the human through each step conversationally,
+right inside the UI.
+
+```
+┌─────────────────────────────────────────┐
+│ Your input needed                    ✕  │
+│─────────────────────────────────────────│
+│ Issue #6 requires a few things from you │
+│ before I can continue. Takes ~2 min.    │
+│                                         │
+│ Step 1 of 2 — GitHub token             │
+│                                         │
+│ I need a GitHub token to manage         │
+│ branch protection on this repo.         │
+│                                         │
+│ Go to: github.com/settings/tokens/new  │
+│ Scopes: repo, workflow, admin:org       │
+│                                         │
+│ Paste your token:                       │
+│ ┌─────────────────────────────────────┐ │
+│ │ ghp_                                │ │
+│ └─────────────────────────────────────┘ │
+│                              [Continue] │
+└─────────────────────────────────────────┘
+```
+
+The loop pauses on the current issue while the wizard is open.
+Once all steps are complete, the loop resumes automatically.
+
+Rules for the wizard:
+- One step at a time — never show step 2 until step 1 is validated
+- Validate every input before proceeding — wrong token = clear error + retry
+- Plain English — no jargon, no stack traces
+- The chairman completes it without help
+- Escape or close = loop stays paused, wizard reopens next time
+
 ### AI-driven recovery — also introduced here
 
 From v0.5 onwards, the hardcoded check-and-halt approach from v0.1 evolves into an
@@ -403,20 +460,17 @@ intelligent recovery layer. When a check fails, instead of just halting, the loo
 3. Proposes a concrete recovery action in plain English
 4. Waits for human confirmation before acting
 
-Format:
-```
-[CLAW] Stopped — {what is wrong}
-Suggestion: {what I propose to do}
-Confirm? [y/N]
-```
+The recovery suggestion appears in the same drawer as the human step wizard —
+consistent UX for all human interaction, whether planned (human steps) or
+unplanned (loop escalation).
 
 The human stays in control. The loop becomes a helpful advisor rather than a brick wall.
-This is built here because v0.5 introduces the conversational layer — the same natural
-language interface that handles idea intake also handles recovery suggestions.
 
 ### Done when
 The chairman describes an idea with no technical help, agents start working within 5 minutes,
-and the review agents in the generated ci.yml are clearly tailored to that specific project
+the review agents in the generated ci.yml are clearly tailored to that specific project,
+and when human steps are required the in-UI wizard guides them through without
+ever opening a terminal
 
 ---
 
