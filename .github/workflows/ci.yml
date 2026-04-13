@@ -315,3 +315,16 @@ jobs:
             Either ### Ready to merge or ### Blocking Issues (list them).
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr view:*)"
+      - name: Fail if changes requested
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+          COMMENTS=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json comments -q '.comments[].body')
+          if echo "$COMMENTS" | grep -q "CHANGES REQUESTED"; then
+            echo "One or more review agents requested changes. Merge blocked."
+            exit 1
+          fi
+          echo "All agents approved. Merge allowed."
