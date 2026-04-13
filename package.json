@@ -1,0 +1,29 @@
+{
+  "name": "claw-studio",
+  "version": "0.0.1",
+  "description": "Claw your way. — Autonomous software factory.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "bin": {
+    "claw": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/ --ext .ts",
+    "test": "vitest run",
+    "dev": "tsx src/cli/index.ts"
+  },
+  "dependencies": {
+    "@octokit/rest": "^20.0.0",
+    "execa": "^8.0.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "tsx": "^4.0.0"
+  }
+}
