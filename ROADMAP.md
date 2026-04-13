@@ -89,14 +89,35 @@ correct action. No ambiguity.
 - Never force-push
 - Never touch branches not prefixed with `claw/`
 
-### Error handling
-- Implementation fails to open PR after 2 attempts → `needs-human` label, loop moves to next issue
-- Review loop exceeds 3 fix attempts without full approval → escalate, pause issue, move to next
-- CI fails after merge → revert squash commit, file new `claw/regression` issue, prioritise above queue
-- Rebase conflict not auto-resolvable → `needs-human`, leave branch intact, alert with specific
-  conflicting files — never force-push a conflicted resolution
-- Loop idle >30 minutes with no state change → alert human, show current state
-- GitHub API rate limited → pause, wait for reset, resume — never crash
+### Error handling — v0.1: hardcoded checks, halt on first failure
+
+On startup and on each cycle, the loop runs ordered checks. First failure halts with a
+plain-English error. No self-healing. No AI suggestions. No silent mutations. Human fixes
+the problem, then resumes.
+
+This is intentional. v0.1 proves the engine works. Recovery intelligence comes in v0.5+.
+
+Checks in order (first failure halts):
+1. ROADMAP.md exists
+2. Current milestone is marked
+3. Issues exist for this milestone (open or closed)
+4. Not all issues closed — if yes, pause and notify (happy-path terminal)
+5. Current issue not labeled `needs-human`
+6. At most one open `claw/` branch
+7. No open PR with missing linked issue
+8. No branch without an open PR
+9. No branch behind main
+10. No missing review agents on open PR
+11. No PR blocked after 3 fix attempts
+12. CI not failing on open PR
+13. Catch-all — anything unexpected → halt and describe
+
+Every error follows the same format:
+```
+[CLAW] Stopped — {what is wrong}
+{what to look at or do}
+Run `claw status` to re-check once resolved.
+```
 
 ### Done when
 sheetsdb completes a full milestone autonomously without a single manual prompt, correctly
@@ -225,6 +246,27 @@ structure, and starts the loop — all without the chairman touching a terminal 
 - PM review step: approve or edit before loop starts — never auto-starts without review
 - New project appears in Mission Control, loop begins
 - Spec generation failure always surfaces to human for review — never auto-starts from a bad spec
+
+### AI-driven recovery — planned for this milestone
+
+From v0.5 onwards, the hardcoded check-and-halt approach from v0.1 evolves into an
+intelligent recovery layer. When a check fails, instead of just halting, the loop:
+
+1. Describes what is wrong (same as v0.1)
+2. Analyses the situation using Claude
+3. Proposes a concrete recovery action in plain English
+4. Waits for human confirmation before acting
+
+Format:
+```
+[CLAW] Stopped — {what is wrong}
+Suggestion: {what I propose to do}
+Confirm? [y/N]
+```
+
+The human stays in control. The loop becomes a helpful advisor rather than a brick wall.
+This is built here because v0.5 introduces the conversational layer — the same natural
+language interface that handles idea intake also handles recovery suggestions.
 
 ### Done when
 The chairman describes an idea with no technical help and agents are working within 5 minutes
