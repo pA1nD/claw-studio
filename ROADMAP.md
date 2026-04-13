@@ -11,7 +11,82 @@
 
 ---
 
-## Current milestone: v0.1 — The Loop
+## Current milestone: v0.0 — The Loop
+
+---
+
+## v0.0 — Project Setup
+*Do this first. Manually. Once.*
+
+Before the loop can run, the project needs a home. This milestone creates everything
+the loop expects to find — repo structure, workflows, labels, runners, CLAUDE.md.
+
+This milestone is completed by a human, not by the loop. It is a one-time setup.
+Once done, mark v0.1 as current and the loop takes over permanently.
+
+### User stories
+- As a PM, I can run `claw status` and see all checks passing with no errors
+- As a PM, I can run `claw start --repo pA1nD/claw-studio` and the loop begins immediately
+- As anyone, the repo is in a clean, known state before the first agent touches it
+
+### What to set up
+
+**Repository**
+- `main` branch exists and is the default
+- Branch protection on `main`: require PR, require CI to pass, no direct push
+
+**Files**
+- `ROADMAP.md` — exists, current milestone marked (this file)
+- `README.md` — exists
+- `CLAUDE.md` — coding standards and architecture for this project
+- `.github/workflows/ci.yml` — lint, typecheck, tests
+- `.github/workflows/agent-review.yml` — 5 parallel review agents
+- `.env.example` — documents required environment variables
+
+**GitHub labels**
+- `v0.0` — purple, "Milestone 0 — Project Setup"
+- `v0.1` — amber, "Milestone 1 — The Loop"
+- `needs-human` — red, "Escalated — requires human decision"
+
+**GitHub Actions secrets**
+- `CLAUDE_CODE_OAUTH_TOKEN` — from `claude setup-token` on your Mac
+
+**Local runners**
+- 6 self-hosted runners registered and showing as Idle in Settings → Actions → Runners
+
+### CLAUDE.md minimum contents
+
+```markdown
+# Claw Studio — Agent Instructions
+
+## Stack
+- TypeScript (strict mode)
+- Node.js 20+
+- CLI tool — keep it lean, no unnecessary frameworks
+
+## Coding standards
+- Functional, composable functions over classes
+- Every public function has a JSDoc comment
+- Errors are typed — no throwing raw strings
+- No `any` types
+
+## Structure
+- src/checks/   — one file per check in the state inspector
+- src/agents/   — implementation agent, review agents
+- src/git/      — all git operations
+- src/loop/     — orchestrator
+- src/cli/      — claw start, status, pause, resume
+
+## Rules
+- Never commit directly to main
+- Never use @ts-ignore or eslint-disable
+- All errors surface to the human — no silent failures
+- Each module has its own test file
+```
+
+### Done when
+`claw status` reports all checks passing.
+Update ROADMAP.md: change current milestone from v0.0 to v0.1.
 
 ---
 
