@@ -37,8 +37,11 @@ export function createClient(deps: CreateClientDeps = {}): Octokit {
   const readToken = deps.readToken ?? defaultReadToken;
   const OctokitCtor = deps.OctokitCtor ?? Octokit;
 
-  const token = readToken();
+  const token = readToken()?.trim();
   if (token === undefined || token.length === 0) {
+    // Caught both "unset" and "whitespace-only" here so a paste error or a
+    // trailing newline from a secrets manager surfaces as the friendly
+    // `[CLAW] Stopped` error, not a silent 401 on the first API call.
     throw new ClawError(
       "GITHUB_PAT is not set.",
       "Add GITHUB_PAT to your .env file. See .env.example for the required format.",

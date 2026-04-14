@@ -50,6 +50,23 @@ describe("createClient", () => {
     expect(() => createClient()).toThrow(ClawError);
   });
 
+  it("throws ClawError when the token is whitespace only", () => {
+    // A paste error or trailing newline from a secrets manager must surface
+    // as a friendly `ClawError` rather than a silent 401 on the first API
+    // call.
+    expect(() => createClient({ readToken: () => "   " })).toThrow(ClawError);
+    expect(() => createClient({ readToken: () => "\n\t" })).toThrow(ClawError);
+  });
+
+  it("trims surrounding whitespace from the token before passing it to Octokit", () => {
+    const ctor = vi.fn();
+    createClient({
+      readToken: () => "  ghp_padded_token\n",
+      OctokitCtor: ctor as unknown as new (options: { auth: string }) => Octokit,
+    });
+    expect(ctor).toHaveBeenCalledWith({ auth: "ghp_padded_token" });
+  });
+
   it("throws a ClawError with the expected message and hint format", () => {
     const error = (() => {
       try {
