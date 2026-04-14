@@ -322,9 +322,25 @@ jobs:
         run: |
           PR_NUMBER="${{ github.event.pull_request.number }}"
           REPO="${{ github.repository }}"
-          COMMENTS=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json comments -q '.comments[].body')
-          if echo "$COMMENTS" | grep -q "CHANGES REQUESTED"; then
-            echo "One or more review agents requested changes. Merge blocked."
+
+          # Only read the MOST RECENT Review Summary comment
+          # Earlier summaries may have CHANGES REQUESTED from previous rounds
+          LATEST_SUMMARY=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json comments             -q '[.comments[] | select(.body | startswith("## Review Summary"))] | last | .body')
+
+          if [ -z "$LATEST_SUMMARY" ]; then
+            echo "No Review Summary found yet. Waiting."
             exit 1
           fi
-          echo "All agents approved. Merge allowed."
+
+          if echo "$LATEST_SUMMARY" | grep -q "### Ready to merge"; then
+            echo "All agents approved. Merge allowed."
+            exit 0
+          fi
+
+          if echo "$LATEST_SUMMARY" | grep -q "### Blocking Issues"; then
+            echo "Review agents requested changes. Merge blocked."
+            exit 1
+          fi
+
+          echo "Summary verdict unclear. Blocking as a precaution."
+          exit 1
