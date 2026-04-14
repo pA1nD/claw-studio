@@ -1,7 +1,7 @@
 {
   "name": "claw-studio",
   "version": "0.0.1",
-  "description": "Claw your way. \u2014 Autonomous software factory.",
+  "description": "Claw your way. — Autonomous software factory.",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -11,22 +11,28 @@
   },
   "scripts": {
     "build": "tsc",
-    "lint": "eslint 'src/**/*.ts' --no-error-on-unmatched-pattern",
+    "lint": "eslint 'src/**/*.{ts,tsx}' --no-error-on-unmatched-pattern",
     "test": "vitest run",
     "dev": "tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@octokit/rest": "^20.0.0",
+    "commander": "^12.1.0",
+    "dotenv": "^16.0.0",
     "execa": "^8.0.0",
-    "dotenv": "^16.0.0"
+    "ink": "^5.2.1",
+    "react": "^18.3.1"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "vitest": "^1.0.0",
-    "eslint": "^8.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
+    "@types/node": "^25.6.0",
+    "@types/react": "^18.3.28",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "tsx": "^4.0.0"
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "ink-testing-library": "^4.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
   }
 }
