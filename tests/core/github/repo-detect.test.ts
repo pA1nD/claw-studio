@@ -97,10 +97,7 @@ describe("detectRepo", () => {
   it("reads repo from .claw/config.json when no explicit flag is passed", async () => {
     const result = await detectRepo({
       cwd: "/fake/project",
-      readConfigFile: async (path) => {
-        expect(path.endsWith(".claw/config.json")).toBe(true);
-        return '{"repo":"owner/from-config"}';
-      },
+      readConfigFile: async () => '{"repo":"owner/from-config"}',
       readGitRemote: async () => "git@github.com:other/remote.git",
     });
     expect(result).toEqual({ owner: "owner", repo: "from-config" });

@@ -86,16 +86,7 @@ export function buildProgram(): Command {
     .command("logs")
     .description("show loop history")
     .option("--tail", "follow the log stream", false)
-    .option("--n <count>", "number of log entries to show", (value) => {
-      const parsed = Number.parseInt(value, 10);
-      if (Number.isNaN(parsed) || parsed < 0) {
-        throw new ClawError(
-          `invalid value for --n: "${value}".`,
-          "Pass a non-negative integer (e.g. --n 20).",
-        );
-      }
-      return parsed;
-    })
+    .option("--n <count>", "number of log entries to show", parseLogEntryCount)
     .action(async (options: { tail?: boolean; n?: number }) => {
       await logsCommand(options);
     });
@@ -105,6 +96,30 @@ export function buildProgram(): Command {
   program.addHelpCommand("help [command]", "show help for a command");
 
   return program;
+}
+
+/**
+ * Commander option coercion for `logs --n <count>`.
+ *
+ * Parses the raw string into a non-negative integer. Throws a `ClawError`
+ * on any other input so the standard error view is rendered.
+ *
+ * Exported so the validator can be unit-tested without going through
+ * Commander's parse lifecycle.
+ *
+ * @param value raw option value captured by Commander
+ * @returns the parsed non-negative integer
+ * @throws {ClawError} when the value is not a non-negative integer
+ */
+export function parseLogEntryCount(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    throw new ClawError(
+      "invalid value for --n.",
+      "Pass a non-negative integer (e.g. --n 20).",
+    );
+  }
+  return parsed;
 }
 
 /**

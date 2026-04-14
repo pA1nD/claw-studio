@@ -36,8 +36,11 @@ export function parseRepoString(input: string): RepoRef {
   const trimmed = input.trim();
   const match = trimmed.match(/^([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
   if (!match || !match[1] || !match[2]) {
+    // Deliberately do not echo `input` — a user accidentally passing a PAT
+    // here would otherwise leak it into the terminal (screenshots, recordings,
+    // scrollback). The hint is enough for the human to recover.
     throw new ClawError(
-      `invalid repo format: "${input}".`,
+      "invalid --repo value.",
       "Use the owner/repo format (e.g. pA1nD/claw-studio).",
     );
   }
