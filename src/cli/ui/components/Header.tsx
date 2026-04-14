@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { Box, Text } from "ink";
 import { theme } from "../theme.js";
 
@@ -5,7 +6,7 @@ import { theme } from "../theme.js";
  * Header component shown when `claw` runs with no arguments.
  * Renders the Claw Studio banner and the top-level commands.
  */
-export function Header(): JSX.Element {
+export function Header(): ReactElement {
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text color={theme.brand}>╔═══════════════════════════╗</Text>
@@ -23,7 +24,7 @@ export function Header(): JSX.Element {
 }
 
 /** One line in the header's command summary. */
-function CommandLine({ name, description }: { name: string; description: string }): JSX.Element {
+function CommandLine({ name, description }: { name: string; description: string }): ReactElement {
   return (
     <Text>
       <Text color={theme.brand}>{name}</Text>

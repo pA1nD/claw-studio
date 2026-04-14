@@ -8,6 +8,13 @@ import { ClawError, isClawError } from "../../core/types/errors.js";
  *
  * Used for one-shot CLI output (command stubs, error screens, success
  * confirmations). Does not keep the process alive after the frame is drawn.
+ *
+ * Note — animation constraint:
+ * `unmount()` is called immediately, which fires every `useEffect` cleanup
+ * before the first interval tick. Components that depend on continuous
+ * updates (e.g. {@link Spinner}) will only render their initial frame.
+ * Long-running UI must use a different rendering strategy that keeps the
+ * Ink instance alive for the duration of the work.
  */
 export async function renderOnce(element: ReactElement): Promise<void> {
   const instance = render(element);

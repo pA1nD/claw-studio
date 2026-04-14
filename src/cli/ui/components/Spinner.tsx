@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { Box, Text } from "ink";
 import { theme } from "../theme.js";
 
@@ -17,7 +17,7 @@ export interface SpinnerProps {
  * Intentionally dependency-free so the CLI does not pull in a heavier
  * spinner library for a single glyph animation.
  */
-export function Spinner({ message }: SpinnerProps): JSX.Element {
+export function Spinner({ message }: SpinnerProps): ReactElement {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {

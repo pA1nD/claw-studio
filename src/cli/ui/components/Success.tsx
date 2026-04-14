@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { Box, Text } from "ink";
 import { theme } from "../theme.js";
 
@@ -13,7 +14,7 @@ export interface SuccessProps {
  * Success / confirmation display component.
  * Used when a command completes cleanly.
  */
-export function Success({ message, detail }: SuccessProps): JSX.Element {
+export function Success({ message, detail }: SuccessProps): ReactElement {
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text>

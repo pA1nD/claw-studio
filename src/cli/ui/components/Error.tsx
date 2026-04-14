@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { Box, Text } from "ink";
 import { theme } from "../theme.js";
 
@@ -18,7 +19,7 @@ export interface ErrorViewProps {
  *     {what to look at or do}
  *     Run `claw status` to re-check once resolved.
  */
-export function ErrorView({ message, hint }: ErrorViewProps): JSX.Element {
+export function ErrorView({ message, hint }: ErrorViewProps): ReactElement {
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text color={theme.error}>[CLAW] Stopped — {message}</Text>
