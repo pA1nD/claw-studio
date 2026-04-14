@@ -12,7 +12,28 @@
 
 ---
 
-## Current milestone: v0.1 — The Loop
+## Current milestone: v0.0.1 — Foundation
+
+---
+
+## v0.0.1 — Foundation
+*The skeleton everything else hangs off.*
+
+Three issues. Must complete before v0.1 can start.
+The loop implements these first — in ascending issue number order.
+
+| Issue | What |
+|---|---|
+| #16 | CLI skeleton — `claw` command, Ink scaffold, command routing |
+| #17 | GitHub auth — Octokit client, PAT, abstraction layer |
+| #18 | Repo setup — first run, file creation, branch protection, runners |
+
+### Done when
+`claw setup --repo owner/repo` runs cleanly end to end on a fresh repo.
+
+---
+
+## v0.1 — The Loop
 
 ---
 
