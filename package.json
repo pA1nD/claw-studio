@@ -10,7 +10,7 @@
     "claw": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-templates.mjs",
     "lint": "eslint 'src/**/*.{ts,tsx}' --no-error-on-unmatched-pattern",
     "test": "vitest run",
     "dev": "tsx src/cli/index.ts",
