@@ -23,6 +23,44 @@ export async function renderOnce(element: ReactElement): Promise<void> {
 }
 
 /**
+ * Render an interactive Ink element and resolve once `build` (a factory the
+ * caller provides) signals completion by calling `resolve` / `reject`.
+ *
+ * Keeps the Ink instance alive so `useInput` and `useEffect` work — the
+ * opposite contract of {@link renderOnce}.
+ *
+ * @typeParam T - value the interaction resolves with
+ * @param build factory that returns an Ink element. It receives:
+ *   - `resolve` — call with the final value
+ *   - `reject`  — call to surface an error
+ * @returns the value passed to `resolve`
+ */
+export async function renderInteractive<T>(
+  build: (resolve: (value: T) => void, reject: (err: unknown) => void) => ReactElement,
+): Promise<T> {
+  return new Promise<T>((outerResolve, outerReject) => {
+    // Captured after render(); referenced lazily by resolveOnce/rejectOnce
+    // so `build` can safely call either synchronously.
+    const holder: { instance?: ReturnType<typeof render> } = {};
+    let settled = false;
+
+    const resolveOnce = (value: T): void => {
+      if (settled) return;
+      settled = true;
+      holder.instance?.unmount();
+      outerResolve(value);
+    };
+    const rejectOnce = (err: unknown): void => {
+      if (settled) return;
+      settled = true;
+      holder.instance?.unmount();
+      outerReject(err);
+    };
+    holder.instance = render(build(resolveOnce, rejectOnce));
+  });
+}
+
+/**
  * Render a ClawError using the standard error view.
  * Unknown throwables are wrapped so the output is always consistent.
  */
