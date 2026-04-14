@@ -2,270 +2,145 @@
 
 **Claw your way.**
 
-Describe a software idea. Watch agents build it — issue by issue, milestone by milestone — on a living dashboard. No code. No terminal. No developers required.
+An autonomous software factory. Point it at a GitHub repo with a roadmap. Watch agents implement it — issue by issue, milestone by milestone.
 
 ---
 
-## What is this?
+## Two surfaces, one engine
 
-Software development has a problem. The people with the best ideas — founders, domain experts, operations managers, chairmen with decades of pattern recognition — have never been able to build the software they imagine. They've always needed a middleman: a developer, an agency, a six-month roadmap and a six-figure budget.
+**Claw CLI** — terminal tool for developers and power users. Install globally, run from inside a project directory.
 
-That's over.
+**Claw Studio** (the app) — desktop dashboard for non-technical users. The chairman's interface. Electron app, v0.2+.
 
-Claw Studio is a software factory. You describe what you want. A pipeline of AI agents implements it, reviews it, fixes it, and ships it — milestone by milestone — while you watch the whole thing happen on a beautiful dashboard. When a milestone ships, you get a live link. A real thing you can click, use, and show people.
-
-The programmer-turned-product-manager uses it to think at the product level without touching code. The 70-year-old chairman uses it to finally build the tools he's been imagining for 40 years. The assistant uses it to solve the workflow problem nobody else could be bothered to fix. The IT department uses it to build every internal tool the company needs, faster than any vendor could deliver.
-
-Nobody writes code. Everybody ships software.
+Both run the same core engine.
 
 ---
 
 ## How it works
 
 ```
-You describe an idea
-        ↓
-Claw Studio generates a roadmap
-        ↓
-Roadmap → milestones → GitHub issues
-        ↓
-Loop starts:
-  pick issue → implement → open PR → 5 review agents run in parallel
-        ↓
-  Arch reviews architecture
-  Security scans for vulnerabilities  
-  DX checks developer experience
-  Perf flags performance issues
-  Test verifies coverage
-        ↓
-  All approved → squash merge → next issue
-  Blocked → fix agent → re-review → repeat
-        ↓
-Milestone complete → deploy → live link → confetti
-        ↓
-Next milestone
-        ↓
-Fully clawed. ✓
+You write a ROADMAP.md with milestones and GitHub issues
+
+claw setup   → checks README + ROADMAP exist, creates .claw/, sets up CI, branch protection
+claw start   → loop begins
+
+Loop:
+  read ROADMAP.md → identify current milestone → get next open issue
+  inspect repo state → 13 ordered checks → halt on first problem
+  spawn Claude Code agent → implement issue → open PR
+  5 review agents fire in parallel (Arch, DX, Security, Perf, Test)
+  all approved → squash merge → next issue
+  any blocked  → same agent resumes (same session, no context loss) → fix → re-review
+  3 failed attempts → label needs-human → skip, continue
+
+Milestone complete → pause → notify → wait for confirmation → next milestone
 ```
 
-The loop runs autonomously. You watch it on the dashboard. When something needs your attention, one light dims and a single sentence tells you why. Most of the time, you just watch.
+---
+
+## What Claw Studio creates in your repo
+
+```
+.claw/
+  CLAUDE.md         generated agent instructions for your project
+  config.json       settings
+  sessions/         in-flight agent sessions
+.github/workflows/
+  ci.yml            CI pipeline + 5 parallel review agents + merge gate
+```
+
+It reads but never modifies `README.md` and `ROADMAP.md` — those are yours.
 
 ---
 
-## The dashboard
+## Getting started
 
-The main view is a living git graph. Multiple branches flow in parallel — each one an agent working on an issue. Branches diverge from main, grow commit by commit, converge back when merged. Agent avatars pulse at the tip of each branch. The factory is always moving.
+```bash
+npm install -g claw-studio
 
-When a milestone completes: *Clawed.* ✓ A warm ripple. Confetti that lasts exactly two seconds. A live link to the running software. Then back to work.
+cd your-project
+claw setup        # detects repo from git remote, sets everything up
+claw start        # loop begins
+```
 
-When something breaks: one agent dims. A slow pulse. A single human-readable sentence. No alert box. No stack trace. Just a light that's different from all the others, asking quietly for your attention.
-
-Mission Control shows every project at once. Dozens of ideas being built simultaneously. Status lights everywhere — green, amber, red. The aggregate feeling of a factory running on your behalf.
+Requires:
+- `GITHUB_PAT` — GitHub personal access token with `repo` and `workflow` scope
+- `CLAUDE_CODE_OAUTH_TOKEN` — from `claude setup-token` (Claude Max subscription)
+- Self-hosted runners registered to your repo
+- `README.md` — must exist
+- `ROADMAP.md` — must exist with at least one milestone
 
 ---
 
-## The brand
+## CLI
 
-**Claw** /klɔː/ — from Old English *clawu*, Proto-Indo-European *\*kel-* meaning "to seize, to grip." The original tool. How living things reach out and change the world. Also: a quiet nod to the model underneath. The people who know, know.
+```
+claw setup  [--repo owner/repo] [--overwrite]   first-time setup
+claw start  [--repo owner/repo] [--auto-continue] [--dry-run]
+claw status [--repo owner/repo]                 current state
+claw pause                                       pause after current action
+claw resume                                      resume from paused
+claw stop                                        stop cleanly
+claw logs   [--tail] [--n 20]                   loop history
+claw help   [command]
+```
 
-| Moment | What you see |
-|---|---|
-| Opening the app | *Claw your way.* |
-| Starting a project | *What's the idea?* |
-| Agents beginning work | *Claw me, claw thee.* |
-| Agents actively building | *Clawing at moonbeams.* |
-| Agent hit a snag | *Clawing it back...* |
-| Milestone ships | *Clawed.* ✓ |
-| Seeing it live | *Your idea. Live.* |
-| Everything done | *Fully clawed.* |
-| Something broke | *Lost the claw.* |
-| Back on track | *Back.* |
+---
+
+## Self-hosting
+
+Claw Studio is MIT licensed. Run it yourself:
+
+```bash
+git clone https://github.com/pA1nD/claw-studio
+cd claw-studio
+npm install
+npm run dev
+```
+
+For the GitHub connection, use the device flow:
+```bash
+GITHUB_AUTH_STRATEGY=device claw setup
+```
+No client secret required. Works in any terminal.
 
 ---
 
 ## Architecture
 
-Claw Studio is GitHub-native through v0.5. From v0.6 — the executable — GitHub becomes an
-optional integration. Everything runs self-contained. No external accounts required.
-
-**v0.1–v0.5 (current)**
-```
-Claw Studio (Electron)
-├── Dashboard — live git graph, agent avatars, milestone progress
-├── Orchestrator — reads roadmap, manages loop state, routes work
-└── GitHub API — issues, PRs, comments, webhooks
-
-GitHub
-├── ROADMAP.md — milestone definitions and ordering
-├── Issues — one per feature, labeled by milestone
-├── PRs — opened by implementation agent, reviewed by review agents
-└── Actions — CI runs on every PR, required to pass before merge
-
-Local runners (Docker)
-├── myoung34/github-runner × N — one per parallel agent
-└── claude -p — implementation and review agents, Max subscription
-```
-
-**v0.6+ (the executable — self-contained)**
-```
-Claw Studio.app
-├── Dashboard — same living git graph, same agent avatars
-├── Orchestrator — same loop, same state machine
-├── Internal issue store — milestones and issues, no GitHub needed
-├── Bundled Git — local version control, no remote required
-├── Bundled runners — Docker-in-Docker, no GitHub Actions
-├── Bundled CI — lint, typecheck, tests run locally
-└── Internal hosting — live links served locally or one-click deploy
-
-GitHub (optional integration)
-├── Sync issues from existing repos
-├── Push to remote for teams who want it
-└── GitHub Actions for teams already using them
-```
-
-No cloud compute costs. No GitHub Actions minutes billing. No GitHub account required.
-Everything runs on your machine, powered by your Claude Max subscription.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for full technical decisions — auth abstraction, file footprint, review pipeline, session persistence, CLI design, and the v0.8 contributor mode.
 
 ---
 
-## Repo structure
+## Roadmap
 
-Every project built with Claw Studio follows this structure:
+See [ROADMAP.md](./ROADMAP.md).
 
-```
-your-project/
-├── ROADMAP.md          # Milestone definitions — the loop reads this first
-├── CLAUDE.md           # Agent instructions — coding standards, architecture decisions
-├── README.md           # What this project is
-└── .github/
-    └── workflows/
-        ├── ci.yml              # Lint, typecheck, tests — must pass before merge
-        ├── agent-review.yml    # 5 parallel review agents on every PR
-        └── auto-fix.yml        # Fix agent triggers on CI failure
-```
-
-The loop never touches branches not prefixed with `claw/`. It never commits directly to main. It never merges without CI green and all review agents approved. It never loops forever — escalation thresholds are hard limits.
-
----
-
-## Loop behaviour
-
-The loop is deterministic. Given any repo state, there is exactly one correct action.
-
-| Repo state | What the loop does |
+| Milestone | What ships |
 |---|---|
-| No open PRs, open issues exist | Implement the first issue |
-| PR open, no reviews yet | Trigger review agents |
-| PR open, all approved, CI green | Squash merge, next issue |
-| PR open, blocking reviews | Run fix agent |
-| Fix attempted 3× still blocked | Escalate → `needs-human`, next issue |
-| Branch exists, no PR | Open PR, trigger reviews |
-| Branch behind main, no review comments | Rebase on main |
-| Branch behind main, review comments exist | Merge main in (preserve comment thread) |
-| All issues `needs-human` | Pause milestone, alert human |
-| No ROADMAP.md | Stop — ask for one |
-
-Git strategy: `claw/issue-{N}-{slug}` branches, squash merge only, branch deleted after merge, never force-push, never commit to main.
+| v0.1 | The Loop — Claw CLI, core engine, runs on any repo |
+| v0.2 | Single Project Dashboard — Electron app, live git graph |
+| v0.3 | Mission Control — all projects at once |
+| v0.4 | Drill Down — issue detail, agent timelines |
+| v0.5 | The Idea Layer — describe idea, agents generate roadmap |
+| v0.6 | The Executable — bundled app, no GitHub dependency |
+| v0.7 | Collaboration — teams, roles, permissions |
+| v0.8 | Living Software — auto-deploy, monitoring, contributor mode |
 
 ---
 
-## Milestones
+## The brand
 
-| Version | Name | Status |
-|---|---|---|
-| v0.1 | The Loop | 🔄 Current |
-| v0.2 | Single Project Dashboard | Planned |
-| v0.3 | Mission Control | Planned |
-| v0.4 | Drill Down | Planned |
-| v0.5 | The Idea Layer | Planned |
-| v0.6 | The Executable | Planned |
-| v0.7 | Collaboration | Planned |
-| v0.8 | Living Software | Planned |
+**Claw** /klɔː/ — Old English *clawu*, to seize, to grip.
 
-See [ROADMAP.md](./ROADMAP.md) for full milestone definitions, user stories, and error handling specs.
+*Claw me, claw thee.* — agent starts work.
+*Clawing at moonbeams.* — working.
+*Clawed.* ✓ — milestone ships.
+*Lost the claw.* — error.
+*Back.* — fixed.
 
 ---
 
-## Running locally
+## License
 
-> v0.1 — the loop runs headlessly. No UI yet. That comes in v0.2.
-
-**Prerequisites**
-- macOS (Apple Silicon or Intel)
-- Docker Desktop running
-- Claude Max subscription
-- GitHub account with a PAT (repo + admin scope)
-
-**Setup**
-
-```bash
-# 1. Clone
-git clone https://github.com/YOUR_ORG/claw-studio
-cd claw-studio
-
-# 2. Generate your Claude Max OAuth token
-claude setup-token
-# → save the output: sk-ant-oat01-...
-
-# 3. Configure environment
-cp .env.example .env
-# Edit .env — add GITHUB_PAT and CLAUDE_CODE_OAUTH_TOKEN
-
-# 4. Start runners
-cd runners
-docker compose up -d --build
-# → 6 runners appear in your repo Settings → Actions → Runners
-
-# 5. Point at a project
-claw start --repo YOUR_ORG/YOUR_REPO
-# → loop reads ROADMAP.md, finds current milestone, starts working
-```
-
-**Watch it run**
-
-```bash
-claw status          # current state of the loop
-claw logs            # live agent output
-claw pause           # pause after current issue completes
-claw resume          # resume
-```
-
----
-
-## Requirements for your project repo
-
-For the loop to work, your project repo needs:
-
-**ROADMAP.md** — milestone definitions with a clearly marked current milestone
-
-**GitHub issues** — labeled with their milestone (e.g. `v0.1`), ordered by priority via issue number
-
-**CLAUDE.md** — agent instructions: coding standards, architecture decisions, what to avoid, what to prefer
-
-**Branch protection on main** — require CI to pass, require PR review (the review agents count)
-
-That's it. The loop handles everything else.
-
----
-
-## Philosophy
-
-Software development has never been about code. It's always been about ideas, outcomes, and human needs. Code is just the medium — and for most of human history, mastery of the medium was required to express the idea.
-
-Claude Shannon proved in 1948 that information could be transmitted, stored, and processed mathematically — democratising communication theory. Claude the model makes that processing accessible in natural language. Claw Studio makes the output of that processing accessible to everyone with an idea.
-
-The programmer-turned-PM thinks in outcomes. The chairman thinks in possibilities. The assistant thinks in daily frustrations. Claw Studio doesn't ask any of them to think in code.
-
-**Your software. Built by agents. Clawed into existence.**
-
----
-
-## Status
-
-Early development. v0.1 in progress. Breaking changes expected.
-
-If you're building something with Claw Studio or want to follow along: watch this repo.
-
----
-
-*Claw your way.*
+MIT — Copyright 2026 Björn Schmidtke
