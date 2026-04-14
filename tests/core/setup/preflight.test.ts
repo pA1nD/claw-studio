@@ -80,7 +80,7 @@ describe("runPreflight", () => {
     expect((error as ClawError).hint).toContain("milestone");
   });
 
-  it("CHECK 4 — fails when any Claw file already exists", async () => {
+  it("CHECK 4 — fails when .claw/config.json already exists", async () => {
     const required = resolveRequiredPaths(cwd);
     const paths = resolveSetupPaths(cwd);
     const error = await runPreflight({
@@ -98,6 +98,48 @@ describe("runPreflight", () => {
     expect(error).toBeInstanceOf(ClawError);
     expect((error as ClawError).message).toContain(".claw/config.json");
     expect((error as ClawError).hint).toContain("--overwrite");
+  });
+
+  it("CHECK 4 — fails when .claw/CLAUDE.md already exists (alone)", async () => {
+    // Covers the first candidate in the three-item loop. Without this test,
+    // a regression that only iterates the second entry would still pass
+    // the config.json test above.
+    const required = resolveRequiredPaths(cwd);
+    const paths = resolveSetupPaths(cwd);
+    const error = await runPreflight({
+      ref,
+      cwd,
+      overwrite: false,
+      deps: {
+        canAccessRepo: async () => true,
+        fileExists: existsFor(
+          new Set<string>([required.readme, required.roadmap, paths.claudeMd]),
+        ),
+      },
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ClawError);
+    expect((error as ClawError).message).toContain(".claw/CLAUDE.md");
+  });
+
+  it("CHECK 4 — fails when .github/workflows/ci.yml already exists (alone)", async () => {
+    // Covers the third candidate — proves the loop reaches the last entry.
+    const required = resolveRequiredPaths(cwd);
+    const paths = resolveSetupPaths(cwd);
+    const error = await runPreflight({
+      ref,
+      cwd,
+      overwrite: false,
+      deps: {
+        canAccessRepo: async () => true,
+        fileExists: existsFor(
+          new Set<string>([required.readme, required.roadmap, paths.ciYml]),
+        ),
+      },
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ClawError);
+    expect((error as ClawError).message).toContain(".github/workflows/ci.yml");
   });
 
   it("CHECK 4 — is skipped when overwrite is true", async () => {

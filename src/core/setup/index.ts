@@ -9,10 +9,13 @@ import { generateClaudeMd } from "./claude-md.js";
 import type { GenerateClaudeMdDeps } from "./claude-md.js";
 import { loadCiTemplate } from "./ci-template.js";
 import type { LoadCiTemplateDeps } from "./ci-template.js";
-import { configureBranchProtection } from "./branch-protection.js";
+import {
+  REQUIRED_STATUS_CHECKS,
+  configureBranchProtection,
+} from "./branch-protection.js";
 import { hasOnlineRunner } from "./runners.js";
 import { resolveSetupPaths } from "./paths.js";
-import { rollbackOrThrow, WriteTracker } from "./write.js";
+import { WriteTracker } from "./write.js";
 import type { WriteTrackerFs } from "./write.js";
 
 /**
@@ -176,16 +179,31 @@ export async function runSetup(options: RunSetupOptions): Promise<boolean> {
     hooks.onPhase?.("branch-protection");
     await configureBranchProtection({ ref, octokit });
   } catch (err) {
-    await rollbackOrThrow(tracker);
-    // The orchestrator is the public boundary for setup — anything that
-    // crosses it must be a typed ClawError. Preserve ClawError instances
-    // unchanged; wrap anything else so no raw Error leaks out.
-    if (err instanceof ClawError) throw err;
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new ClawError(
-      "setup failed before it could finish.",
-      `Underlying error: ${detail}`,
-    );
+    // Always call rollback directly — NEVER via a helper that throws — so
+    // we can surface BOTH the original failure AND any rollback leftovers
+    // in a single error. Losing the original cause is the worst possible
+    // failure mode: the human sees "rollback couldn't delete X" with no
+    // clue why setup failed in the first place.
+    const rollbackFailures = await tracker.rollback();
+
+    const original = err instanceof ClawError
+      ? err
+      : new ClawError(
+          "setup failed before it could finish.",
+          err instanceof Error ? err.message : String(err),
+        );
+
+    if (rollbackFailures.length === 0) {
+      throw original;
+    }
+
+    const hint = [
+      original.hint,
+      `Also: rollback could not remove ${rollbackFailures.join(", ")} — delete manually.`,
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join(" ");
+    throw new ClawError(original.message, hint);
   }
 
   // 5. Human steps — run AFTER writes, per issue #18's convention
@@ -218,7 +236,9 @@ export function buildSetupPlan(ref: RepoRef, overwrite: boolean): SetupPlan {
       ".claw/config.json",
       ".github/workflows/ci.yml",
     ],
-    requiredChecks: ["Lint", "Type Check", "Tests", "Review Summary"],
+    // Single source of truth — what we show the human must exactly match
+    // what we configure on the branch, or the confirmation becomes a lie.
+    requiredChecks: [...REQUIRED_STATUS_CHECKS],
     overwrite,
   };
 }

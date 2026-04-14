@@ -56,8 +56,11 @@ export function Confirm({
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text color={theme.brand}>{title}</Text>
       <Box marginTop={1} flexDirection="column">
-        {lines.map((line) => (
-          <Text key={line} color={theme.text}>
+        {lines.map((line, idx) => (
+          // `lines` may contain empty-string separators (and more than one
+          // when --overwrite is active), so content-based keys collide.
+          // Index keys are safe here — the list is static per render.
+          <Text key={idx} color={theme.text}>
             {line}
           </Text>
         ))}

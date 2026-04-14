@@ -60,7 +60,18 @@ export async function configureBranchProtection(
         contexts: [...REQUIRED_STATUS_CHECKS],
       },
       enforce_admins: true,
-      required_pull_request_reviews: null,
+      // `required_pull_request_reviews` being non-null is what actually
+      // forces commits through a PR — `required_status_checks` alone only
+      // applies at merge time, so a direct push to `main` would bypass
+      // them entirely. Zero approvals still routes every change through a
+      // PR, which is the guarantee the loop depends on: the 5 review
+      // agents fire on the PR, the Review Summary gate runs, and nothing
+      // can merge without the full pipeline.
+      required_pull_request_reviews: {
+        dismiss_stale_reviews: false,
+        require_code_owner_reviews: false,
+        required_approving_review_count: 0,
+      },
       restrictions: null,
       allow_force_pushes: false,
       allow_deletions: false,

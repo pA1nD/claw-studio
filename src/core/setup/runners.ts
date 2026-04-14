@@ -42,8 +42,8 @@ export async function listRunners(
     const runners = data.runners ?? [];
     return runners.map((runner) => ({
       name: String(runner.name),
-      online: Boolean(runner.status === "online"),
-      idle: Boolean(runner.busy === false),
+      online: runner.status === "online",
+      idle: runner.busy === false,
     }));
   } catch (err: unknown) {
     const detail = err instanceof Error ? err.message : String(err);

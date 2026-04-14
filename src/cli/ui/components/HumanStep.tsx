@@ -91,8 +91,10 @@ export function HumanStep({
       <Box marginTop={1} flexDirection="column">
         <Text color={theme.text}>{reason}</Text>
         <Text color={theme.muted}>Open: {url}</Text>
-        {details.map((line) => (
-          <Text key={line} color={theme.text}>
+        {details.map((line, idx) => (
+          // Index keys — `details` is static per render and could in
+          // principle contain duplicates across future callers.
+          <Text key={idx} color={theme.text}>
             {line}
           </Text>
         ))}

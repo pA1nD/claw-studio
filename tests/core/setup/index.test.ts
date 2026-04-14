@@ -16,6 +16,8 @@ interface ScenarioOverrides {
   templateContents?: string;
   updateBranchProtectionBehavior?: () => Promise<{ data: Record<string, unknown> }>;
   listRunnersBehavior?: () => Promise<{ data: { total_count: number; runners: unknown[] } }>;
+  /** Optional override for the `rm` filesystem primitive, exercising partial-rollback. */
+  rmBehavior?: (path: string) => Promise<void>;
 }
 
 interface Scenario {
@@ -108,6 +110,9 @@ function buildScenario(overrides: ScenarioOverrides = {}): Scenario {
         },
         rm: async (path: string) => {
           removed.push(path);
+          if (overrides.rmBehavior) {
+            await overrides.rmBehavior(path);
+          }
         },
       },
       preflight: {
@@ -274,6 +279,31 @@ describe("runSetup — rollback", () => {
     await scenario.runSetup().catch(() => undefined);
     expect(scenario.runnerStepCalls).toBe(0);
     expect(scenario.tokenStepCalls).toBe(0);
+  });
+
+  it("surfaces BOTH the original failure AND the rollback leftovers when rm partially fails", async () => {
+    // The orchestrator must not lose the original cause when rollback
+    // itself has leftovers. The human needs to see WHY setup failed AND
+    // what could not be cleaned up — otherwise they get a confusing
+    // rollback-only error with no root cause.
+    const paths = resolveSetupPaths(cwd);
+    const scenario = buildScenario({
+      runGenerator: async () => {
+        throw new Error("claude crashed");
+      },
+      rmBehavior: async (path: string) => {
+        if (path === paths.configJson) throw new Error("EPERM");
+      },
+    });
+
+    const error = await scenario.runSetup().catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ClawError);
+    const clawError = error as ClawError;
+    // The original failure is preserved in the message.
+    expect(clawError.message).toContain("setup failed");
+    // The rollback leftover surfaces in the hint.
+    expect(clawError.hint).toContain(paths.configJson);
+    expect(clawError.hint).toContain("delete manually");
   });
 });
 

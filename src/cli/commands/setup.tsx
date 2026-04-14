@@ -79,9 +79,7 @@ export function buildInkHooks(): SetupHooks {
             "Follow the GitHub instructions to register a runner on your machine,",
             "then come back here and press <enter>.",
           ]}
-          {...(context.verifyRunnerOnline
-            ? { verify: context.verifyRunnerOnline }
-            : {})}
+          verify={context.verifyRunnerOnline}
           onDone={() => resolve(undefined)}
         />
       )),

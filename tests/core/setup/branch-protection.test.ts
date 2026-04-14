@@ -44,6 +44,18 @@ describe("configureBranchProtection", () => {
       | undefined;
     expect(checks?.strict).toBe(true);
     expect(checks?.contexts).toEqual([...REQUIRED_STATUS_CHECKS]);
+
+    // Non-null required_pull_request_reviews is what actually forces
+    // commits through a PR. required_status_checks alone does not — it
+    // only applies at merge time, so a direct push to main would bypass
+    // the review pipeline entirely.
+    const reviews = args?.["required_pull_request_reviews"] as
+      | { required_approving_review_count: number }
+      | undefined
+      | null;
+    expect(reviews).not.toBeNull();
+    expect(reviews).toBeDefined();
+    expect(reviews?.required_approving_review_count).toBe(0);
   });
 
   it("respects an explicit branch override", async () => {

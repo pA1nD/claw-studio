@@ -111,22 +111,41 @@ function defaultReadFile(path: string): Promise<string> {
   return readFile(path, "utf8");
 }
 
+/** How long we wait on `claude -p` before assuming it has stalled. */
+const CLAUDE_TIMEOUT_MS = 120_000;
+
 /**
- * Default generator — shells out to `claude -p {prompt}`.
+ * Default generator — shells out to `claude -p` with the prompt on stdin.
  *
- * Uses the `claude` CLI that ships with Claude Code. If the binary is not on
- * `PATH`, surface a friendly {@link ClawError} explaining how to install it
- * rather than a raw ENOENT stack trace.
+ * The prompt goes through stdin, not argv, for two reasons:
+ *   1. Linux `ARG_MAX` is ~2MB — a large README + ROADMAP would fail with
+ *      `E2BIG` when the prompt is an argv entry.
+ *   2. Process arguments are world-readable via `/proc/[pid]/cmdline` on
+ *      Linux, so passing user content on argv exposes it to every local
+ *      user for the lifetime of the process.
+ *
+ * A 2-minute timeout prevents a stalled `claude` process from hanging
+ * setup indefinitely — the human gets a typed, actionable error instead
+ * of an apparent freeze.
  */
 async function defaultRunGenerator(prompt: string): Promise<string> {
   try {
-    const { stdout } = await execa("claude", ["-p", prompt]);
+    const { stdout } = await execa("claude", ["-p"], {
+      input: prompt,
+      timeout: CLAUDE_TIMEOUT_MS,
+    });
     return stdout;
   } catch (err: unknown) {
     if (isCommandNotFound(err)) {
       throw new ClawError(
         "`claude` CLI not found on PATH.",
         "Install Claude Code before running setup: https://docs.anthropic.com/en/docs/claude-code",
+      );
+    }
+    if (isTimeout(err)) {
+      throw new ClawError(
+        "`claude -p` did not respond in time while generating CLAUDE.md.",
+        `The subprocess was killed after ${CLAUDE_TIMEOUT_MS / 1000}s. Check your Claude connection and re-run \`claw setup\`.`,
       );
     }
     const detail = err instanceof Error ? err.message : String(err);
@@ -145,4 +164,13 @@ function isCommandNotFound(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const record = err as Record<string, unknown>;
   return record["code"] === "ENOENT" || record["errno"] === -2;
+}
+
+/**
+ * Narrow a thrown value to an execa timeout. execa flags timed-out
+ * subprocesses with `timedOut: true` on the thrown error object.
+ */
+function isTimeout(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  return (err as Record<string, unknown>)["timedOut"] === true;
 }
