@@ -2,16 +2,67 @@
 
 > **Claw your way.**
 >
-> Claw Studio is a software factory. You describe an idea. Agents build it — issue by issue,
-> milestone by milestone — while you watch it happen on a living dashboard. No code. No terminal.
-> No developers required.
+> Claw Studio is an autonomous software factory. Point it at a GitHub repo.
+> It reads your roadmap, implements issues milestone by milestone, and ships software —
+> while you watch it happen on a living dashboard.
 >
-> Two users: a programmer-turned-product-manager who thinks in outcomes, and a chairman who thinks
-> in ideas. Same interface. Different depths. Both at home.
+> Two surfaces, one engine:
+> **Claw CLI** for developers and power users.
+> **Claw Studio** (the app) for the chairman who thinks in ideas.
 
 ---
 
 ## Current milestone: v0.1 — The Loop
+
+---
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Language | TypeScript (strict) throughout |
+| GitHub API | `@octokit/rest` — auth abstracted for GitHub App later |
+| Terminal UI | Ink — React for the terminal (used by Claude Code) |
+| Desktop app | Electron — v0.2+ (TypeScript throughout, no Rust) |
+| Tests | vitest |
+| Auth v0.1 | PAT via `GITHUB_PAT` env variable |
+| Auth v0.3+ | GitHub App OAuth — one-click "Connect GitHub" button |
+| Auth self-hosted | Device flow (`@octokit/auth-oauth-device`) |
+
+---
+
+## File footprint per target repo
+
+```
+.claw/
+  CLAUDE.md         generated agent instructions
+  config.json       { repo, pollInterval, clawVersion }
+  sessions/         in-flight agent sessions
+.github/workflows/
+  ci.yml            lint + typecheck + tests + 5 review agents + merge gate
+
+README.md           must exist — hard requirement (user owns this)
+ROADMAP.md          user authors this — Claw Studio reads it (user owns this)
+```
+
+Setup fails if any Claw Studio files already exist, unless `--overwrite` is passed.
+
+---
+
+## CLI API
+
+```
+claw setup  [--repo owner/repo] [--overwrite]
+claw start  [--repo owner/repo] [--auto-continue] [--dry-run]
+claw status [--repo owner/repo]
+claw pause
+claw resume
+claw stop
+claw logs   [--tail] [--n 20]
+claw help   [command]
+```
+
+Repo auto-detected from `.claw/config.json` or `git remote get-url origin`.
 
 ---
 
