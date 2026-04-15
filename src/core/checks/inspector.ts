@@ -2,6 +2,10 @@ import type { Octokit } from "@octokit/rest";
 import { ClawError } from "../types/errors.js";
 import { parseRepoString } from "../github/repo-detect.js";
 import type { RepoRef } from "../github/repo-detect.js";
+import {
+  isRateLimitError,
+  toRateLimitClawError,
+} from "../github/rate-limit.js";
 import type { Issue } from "../roadmap/parser.js";
 import type { BranchInfo, CheckResult, PullRequestInfo } from "./types.js";
 import { check01Roadmap } from "./check-01-roadmap.js";
@@ -172,49 +176,6 @@ async function runChecks(
   if (!result13.passed) return result13;
 
   return { passed: true };
-}
-
-/**
- * Detect a GitHub rate-limit response.
- *
- * GitHub returns `429 Too Many Requests` for secondary rate limits and
- * `403 Forbidden` with `X-RateLimit-Remaining: 0` for the primary one —
- * we have to recognise both shapes so the loop halts cleanly instead of
- * crashing with an unformatted exception.
- */
-function isRateLimitError(err: unknown): boolean {
-  const status = readNumberProp(err, "status");
-  if (status !== 403 && status !== 429) return false;
-  if (status === 429) return true;
-  const remaining = readResponseHeader(err, "x-ratelimit-remaining");
-  return remaining !== undefined && Number(remaining) === 0;
-}
-
-/** Format a rate-limit error into the standard `[CLAW] Stopped` shape. */
-function toRateLimitClawError(err: unknown): ClawError {
-  const resetSeconds = Number(readResponseHeader(err, "x-ratelimit-reset"));
-  const hint = Number.isFinite(resetSeconds)
-    ? `Limit resets at ${new Date(resetSeconds * 1000).toISOString()}. Run \`claw status\` to re-check once resolved.`
-    : "Run `claw status` to re-check once resolved.";
-  return new ClawError("GitHub API rate limit reached.", hint);
-}
-
-/** Read `err[key]` when it is a number, or `undefined`. */
-function readNumberProp(err: unknown, key: string): number | undefined {
-  if (typeof err !== "object" || err === null) return undefined;
-  const val = (err as Record<string, unknown>)[key];
-  return typeof val === "number" ? val : undefined;
-}
-
-/** Read `err.response.headers[key]` when it is a string, or `undefined`. */
-function readResponseHeader(err: unknown, key: string): string | undefined {
-  if (typeof err !== "object" || err === null) return undefined;
-  const response = (err as Record<string, unknown>).response;
-  if (typeof response !== "object" || response === null) return undefined;
-  const headers = (response as Record<string, unknown>).headers;
-  if (typeof headers !== "object" || headers === null) return undefined;
-  const val = (headers as Record<string, unknown>)[key];
-  return typeof val === "string" ? val : undefined;
 }
 
 /**
