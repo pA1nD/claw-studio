@@ -65,21 +65,4 @@ describe("check12CIFailing", () => {
     );
     expect(seenShas).toEqual(["abc123"]);
   });
-
-  it("skips PRs with an empty head SHA", async () => {
-    let called = false;
-    const result = await check12CIFailing(
-      stubClient,
-      ref,
-      [pr({ number: 1, headSha: "" })],
-      {
-        listFailingChecks: async () => {
-          called = true;
-          return [{ name: "Lint" }];
-        },
-      },
-    );
-    expect(result.passed).toBe(true);
-    expect(called).toBe(false);
-  });
 });

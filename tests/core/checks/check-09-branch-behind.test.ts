@@ -64,4 +64,24 @@ describe("check09BranchBehind", () => {
     );
     expect(compare).toHaveBeenCalledTimes(1);
   });
+
+  it("continues past an up-to-date branch and fails on a later behind one", async () => {
+    // Guards against a regression where a misplaced `return { passed: true }`
+    // inside the loop short-circuits after the first passing branch.
+    const compare = vi
+      .fn()
+      .mockResolvedValueOnce({ behindBy: 0 })
+      .mockResolvedValueOnce({ behindBy: 3 });
+    const result = await check09BranchBehind(
+      stubClient,
+      ref,
+      "main",
+      [branch("claw/issue-2-x"), branch("claw/issue-7-y")],
+      { compareBranchToDefault: compare },
+    );
+    expect(compare).toHaveBeenCalledTimes(2);
+    expect(result.passed).toBe(false);
+    expect(result.error?.message).toContain("claw/issue-7-y");
+    expect(result.error?.message).toContain("behind main by 3 commits");
+  });
 });

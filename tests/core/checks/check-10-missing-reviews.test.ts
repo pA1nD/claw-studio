@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Octokit } from "@octokit/rest";
 import { check10MissingReviews } from "../../../src/core/checks/check-10-missing-reviews.js";
 import { REVIEW_AGENT_HEADERS } from "../../../src/core/checks/types.js";
@@ -88,5 +88,27 @@ describe("check10MissingReviews", () => {
       { listPRCommentBodies: async () => allFive },
     );
     expect(result.passed).toBe(true);
+  });
+
+  it("continues past a fully-reviewed PR and fails on a later partial one", async () => {
+    // Guards against a regression where a misplaced `return { passed: true }`
+    // inside the loop short-circuits after the first complete PR.
+    const allFive = REVIEW_AGENT_HEADERS.map((h) => `${h}\n\nAPPROVED`);
+    const partial = [`${REVIEW_AGENT_HEADERS[0]}\n\nAPPROVED`];
+    const listBodies = vi
+      .fn()
+      .mockResolvedValueOnce(allFive)
+      .mockResolvedValueOnce(partial);
+
+    const result = await check10MissingReviews(
+      stubClient,
+      ref,
+      [pr({ number: 1 }), pr({ number: 2 })],
+      { listPRCommentBodies: listBodies },
+    );
+    expect(listBodies).toHaveBeenCalledTimes(2);
+    expect(result.passed).toBe(false);
+    expect(result.error?.message).toContain("PR #2");
+    expect(result.error?.message).toContain("missing reviews from");
   });
 });

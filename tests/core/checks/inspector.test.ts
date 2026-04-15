@@ -4,15 +4,14 @@ import { inspectRepo } from "../../../src/core/checks/inspector.js";
 import type { InspectorDeps } from "../../../src/core/checks/inspector.js";
 import {
   MAX_FIX_ATTEMPTS,
+  NEEDS_HUMAN_LABEL,
   REVIEW_AGENT_HEADERS,
 } from "../../../src/core/checks/types.js";
 import type {
-  BranchInfo,
   PullRequestInfo,
   SessionFile,
 } from "../../../src/core/checks/types.js";
 import type { Issue } from "../../../src/core/roadmap/parser.js";
-import { NEEDS_HUMAN_LABEL } from "../../../src/core/checks/check-05-needs-human.js";
 import { ClawError } from "../../../src/core/types/errors.js";
 
 const stubClient = {} as Octokit;
@@ -309,5 +308,77 @@ describe("inspectRepo", () => {
     });
     expect(seen.ref).toEqual({ owner: "pA1nD", repo: "claw-studio" });
     expect(seen.label).toBe("v0.1");
+  });
+
+  // -- Rate-limit handling ---------------------------------------------
+
+  it("converts a 429 rate-limit error into a formatted ClawError", async () => {
+    const rateLimitError = Object.assign(new Error("rate limited"), {
+      status: 429,
+      response: {
+        headers: {
+          "x-ratelimit-remaining": "0",
+          "x-ratelimit-reset": "1776600000", // fixed epoch → stable assertion
+        },
+      },
+    });
+    const result = await inspectRepo(stubClient, REPO, {
+      deps: passingDeps({
+        readRoadmap: async () => {
+          throw rateLimitError;
+        },
+      }),
+    });
+    expect(result.passed).toBe(false);
+    expect(result.error?.message).toBe("GitHub API rate limit reached.");
+    expect(result.error?.hint).toContain("Limit resets at");
+    expect(result.error?.hint).toContain(
+      new Date(1776600000 * 1000).toISOString(),
+    );
+  });
+
+  it("converts a 403 with X-RateLimit-Remaining: 0 into a rate-limit ClawError", async () => {
+    const rateLimitError = Object.assign(new Error("forbidden"), {
+      status: 403,
+      response: { headers: { "x-ratelimit-remaining": "0" } },
+    });
+    const result = await inspectRepo(stubClient, REPO, {
+      deps: passingDeps({
+        listBranches: async () => {
+          throw rateLimitError;
+        },
+      }),
+    });
+    expect(result.passed).toBe(false);
+    expect(result.error?.message).toBe("GitHub API rate limit reached.");
+  });
+
+  it("does NOT intercept a 403 that is not a rate-limit error", async () => {
+    const forbidden = Object.assign(new Error("forbidden"), {
+      status: 403,
+      response: { headers: { "x-ratelimit-remaining": "42" } },
+    });
+    await expect(
+      inspectRepo(stubClient, REPO, {
+        deps: passingDeps({
+          readRoadmap: async () => {
+            throw forbidden;
+          },
+        }),
+      }),
+    ).rejects.toBe(forbidden);
+  });
+
+  it("re-throws errors that are not rate-limit responses", async () => {
+    const genericError = new Error("network down");
+    await expect(
+      inspectRepo(stubClient, REPO, {
+        deps: passingDeps({
+          readRoadmap: async () => {
+            throw genericError;
+          },
+        }),
+      }),
+    ).rejects.toBe(genericError);
   });
 });

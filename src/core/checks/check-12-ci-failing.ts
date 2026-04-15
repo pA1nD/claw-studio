@@ -53,7 +53,6 @@ export async function check12CIFailing(
 
   for (const pr of openPRs) {
     if (!isClawPullRequest(pr)) continue;
-    if (!pr.headSha) continue;
 
     const failing = await listFailing(ref, pr.headSha);
     if (failing.length === 0) continue;

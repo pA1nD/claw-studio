@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { check07PRNoIssue } from "../../../src/core/checks/check-07-pr-no-issue.js";
 import {
-  check07PRNoIssue,
   hasLinkedIssue,
-} from "../../../src/core/checks/check-07-pr-no-issue.js";
-import type { PullRequestInfo } from "../../../src/core/checks/types.js";
+  type PullRequestInfo,
+} from "../../../src/core/checks/types.js";
 import { ClawError } from "../../../src/core/types/errors.js";
 
 function pr(overrides: Partial<PullRequestInfo> & { number: number }): PullRequestInfo {

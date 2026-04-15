@@ -3,10 +3,6 @@ import type { Issue, Milestone } from "../roadmap/parser.js";
 import { NEEDS_HUMAN_LABEL, extractLinkedIssueNumber } from "./types.js";
 import type { CheckResult, PullRequestInfo } from "./types.js";
 
-// Re-exported for callers that already import the label from this module
-// (e.g. tests that target CHECK 5 directly).
-export { NEEDS_HUMAN_LABEL };
-
 /**
  * CHECK 5 — The lowest-numbered open issue in the milestone is labeled
  * `needs-human`.

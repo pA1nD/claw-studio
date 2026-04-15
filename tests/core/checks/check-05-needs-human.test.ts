@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { check05NeedsHuman } from "../../../src/core/checks/check-05-needs-human.js";
+import type { Issue, Milestone } from "../../../src/core/roadmap/parser.js";
 import {
   NEEDS_HUMAN_LABEL,
-  check05NeedsHuman,
-} from "../../../src/core/checks/check-05-needs-human.js";
-import type { Issue, Milestone } from "../../../src/core/roadmap/parser.js";
-import type { PullRequestInfo } from "../../../src/core/checks/types.js";
+  type PullRequestInfo,
+} from "../../../src/core/checks/types.js";
 import { ClawError } from "../../../src/core/types/errors.js";
 
 function issue(overrides: Partial<Issue> & { number: number }): Issue {

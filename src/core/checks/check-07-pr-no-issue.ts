@@ -2,9 +2,6 @@ import { ClawError } from "../types/errors.js";
 import { hasLinkedIssue, isClawPullRequest } from "./types.js";
 import type { CheckResult, PullRequestInfo } from "./types.js";
 
-// Re-exported for callers that already import the helper from this module.
-export { hasLinkedIssue };
-
 /**
  * CHECK 7 — Every open `claw/` PR has a linked issue in its body.
  *

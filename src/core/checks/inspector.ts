@@ -82,6 +82,21 @@ export async function inspectRepo(
   repo: string,
   options: InspectRepoOptions = {},
 ): Promise<CheckResult> {
+  try {
+    return await runChecks(client, repo, options);
+  } catch (err) {
+    if (isRateLimitError(err)) {
+      return { passed: false, error: toRateLimitClawError(err) };
+    }
+    throw err;
+  }
+}
+
+async function runChecks(
+  client: Octokit,
+  repo: string,
+  options: InspectRepoOptions,
+): Promise<CheckResult> {
   const ref = parseRepoString(repo);
   const cwd = options.cwd ?? process.cwd();
   const deps = options.deps ?? {};
@@ -106,14 +121,19 @@ export async function inspectRepo(
   const result4 = check04MilestoneComplete(milestone);
   if (!result4.passed) return result4;
 
-  // Branches and PRs are independent fetches — both needed for the rest of
-  // the checks. Parallel saves one API round-trip per cycle.
+  // Branches, PRs, and the default-branch name are three independent fetches
+  // all needed downstream. Running them in parallel costs one unused call
+  // when checks 5-8 halt early, but saves two serial round-trips on every
+  // healthy cycle — the common case.
   const listBranches = deps.listBranches ?? buildDefaultListBranches(client);
   const listOpenPRs =
     deps.listOpenPullRequests ?? buildDefaultListOpenPRs(client);
-  const [branches, openPRs] = await Promise.all([
+  const readDefaultBranch =
+    deps.readDefaultBranch ?? buildDefaultReadDefaultBranch(client);
+  const [branches, openPRs, defaultBranch] = await Promise.all([
     listBranches(ref),
     listOpenPRs(ref),
+    readDefaultBranch(ref),
   ]);
 
   const result5 = check05NeedsHuman(milestone, openPRs);
@@ -128,9 +148,6 @@ export async function inspectRepo(
   const result8 = check08BranchNoPR(branches, openPRs);
   if (!result8.passed) return result8;
 
-  const readDefaultBranch =
-    deps.readDefaultBranch ?? buildDefaultReadDefaultBranch(client);
-  const defaultBranch = await readDefaultBranch(ref);
   const result9 = await check09BranchBehind(client, ref, defaultBranch, branches, {
     compareBranchToDefault: deps.compareBranchToDefault,
   });
@@ -155,6 +172,49 @@ export async function inspectRepo(
   if (!result13.passed) return result13;
 
   return { passed: true };
+}
+
+/**
+ * Detect a GitHub rate-limit response.
+ *
+ * GitHub returns `429 Too Many Requests` for secondary rate limits and
+ * `403 Forbidden` with `X-RateLimit-Remaining: 0` for the primary one —
+ * we have to recognise both shapes so the loop halts cleanly instead of
+ * crashing with an unformatted exception.
+ */
+function isRateLimitError(err: unknown): boolean {
+  const status = readNumberProp(err, "status");
+  if (status !== 403 && status !== 429) return false;
+  if (status === 429) return true;
+  const remaining = readResponseHeader(err, "x-ratelimit-remaining");
+  return remaining !== undefined && Number(remaining) === 0;
+}
+
+/** Format a rate-limit error into the standard `[CLAW] Stopped` shape. */
+function toRateLimitClawError(err: unknown): ClawError {
+  const resetSeconds = Number(readResponseHeader(err, "x-ratelimit-reset"));
+  const hint = Number.isFinite(resetSeconds)
+    ? `Limit resets at ${new Date(resetSeconds * 1000).toISOString()}. Run \`claw status\` to re-check once resolved.`
+    : "Run `claw status` to re-check once resolved.";
+  return new ClawError("GitHub API rate limit reached.", hint);
+}
+
+/** Read `err[key]` when it is a number, or `undefined`. */
+function readNumberProp(err: unknown, key: string): number | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const val = (err as Record<string, unknown>)[key];
+  return typeof val === "number" ? val : undefined;
+}
+
+/** Read `err.response.headers[key]` when it is a string, or `undefined`. */
+function readResponseHeader(err: unknown, key: string): string | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const response = (err as Record<string, unknown>).response;
+  if (typeof response !== "object" || response === null) return undefined;
+  const headers = (response as Record<string, unknown>).headers;
+  if (typeof headers !== "object" || headers === null) return undefined;
+  const val = (headers as Record<string, unknown>)[key];
+  return typeof val === "string" ? val : undefined;
 }
 
 /**
