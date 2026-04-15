@@ -164,9 +164,9 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            You are Arch, a code architecture reviewer for Claw Studio — a TypeScript CLI loop.
-            Review for: separation of concerns, module structure per CLAUDE.md, composability,
-            alignment with the src/ layout. Do not flag [PENDING] issues as missing.
+            You are Arch, a code architecture reviewer for {{REPO}}.
+            Review for: separation of concerns, module boundaries, composability,
+            alignment with the project structure in CLAUDE.md. Do not flag [PENDING] issues as missing.
             Post your review as a PR comment starting with ## Arch Review.
             End with APPROVED or CHANGES REQUESTED and one sentence why.
           claude_args: |
@@ -190,8 +190,8 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            You are DX, a developer experience reviewer for Claw Studio — a TypeScript CLI loop.
-            Review for: TypeScript strictness, no `any`, error message quality per CLAUDE.md,
+            You are DX, a developer experience reviewer for {{REPO}}.
+            Review for: TypeScript strictness, no `any`, error message quality,
             JSDoc on public functions, no @ts-ignore or eslint-disable.
             Post your review as a PR comment starting with ## DX Review.
             End with APPROVED or CHANGES REQUESTED and one sentence why.
@@ -216,9 +216,9 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            You are Security, a security reviewer for Claw Studio — a CLI that handles GitHub PATs and Claude OAuth tokens.
-            Treat any credential exposure in logs or error messages as BLOCKING.
-            Review for: token leakage, input validation, safe secret handling, dependency safety.
+            You are Security, a security reviewer for {{REPO}}.
+            Treat any credential or secret exposure as BLOCKING.
+            Review for: credential leakage, input validation, safe secret handling, dependency safety.
             Post your review as a PR comment starting with ## Security Review.
             Mark any credential leak BLOCKING.
             End with APPROVED or CHANGES REQUESTED and one sentence why.
@@ -243,9 +243,9 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            You are Perf, a performance reviewer for Claw Studio — a loop that polls GitHub continuously.
-            Review for: unnecessary GitHub API calls, missing pagination, blocking async operations,
-            memory leaks in the loop, missing rate limit handling.
+            You are Perf, a performance reviewer for {{REPO}}.
+            Review for: unnecessary API calls, missing pagination, blocking async operations,
+            memory leaks, missing rate limit handling.
             Post your review as a PR comment starting with ## Perf Review.
             End with APPROVED or CHANGES REQUESTED and one sentence why.
           claude_args: |
@@ -269,9 +269,9 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            You are Test, a test quality reviewer for Claw Studio.
+            You are Test, a test quality reviewer for {{REPO}}.
             Review for: missing test files for new modules, untested error paths,
-            tests that test implementation not behaviour, missing edge cases for state checks.
+            tests that test implementation not behaviour, missing edge cases.
             Post your review as a PR comment starting with ## Test Review.
             End with APPROVED or CHANGES REQUESTED and one sentence why.
           claude_args: |
@@ -300,7 +300,7 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            You are the Review Coordinator for Claw Studio.
+            You are the Review Coordinator for {{REPO}}.
             Read all agent review comments on this PR, then post a summary comment with:
             ## Review Summary
             | Agent | Verdict | Blocking? |

@@ -5,6 +5,12 @@ import { ClawError } from "../types/errors.js";
 
 /** Options for {@link loadCiTemplate}. */
 export interface LoadCiTemplateOptions {
+  /**
+   * The target repository in `owner/repo` format.
+   * Substituted into the `{{REPO}}` placeholder in every review agent prompt
+   * so agents identify themselves against the right project.
+   */
+  repo: string;
   /** Injected dependencies for testing. */
   deps?: LoadCiTemplateDeps;
 }
@@ -19,26 +25,31 @@ export interface LoadCiTemplateDeps {
 
 /**
  * Load the canonical `.github/workflows/ci.yml` template that ships with
- * Claw Studio.
+ * Claw Studio, with all `{{REPO}}` placeholders substituted for the target repo.
  *
- * Per issue #18, the template is the "full Claw Studio pipeline" — lint,
- * typecheck, tests, and the 5 review agents. It is copied verbatim today;
- * v0.5 introduces per-project review-agent prompt tailoring, which this
- * loader will gain as a transform step.
+ * The template uses `{{REPO}}` in every review agent prompt so agents identify
+ * themselves against the right project rather than "Claw Studio". For example:
+ *   "You are Arch, a code architecture reviewer for owner/repo."
  *
- * @param options optional injected deps for testing
- * @returns the raw YAML contents to write to `.github/workflows/ci.yml`
+ * Per issue #18, the template is otherwise copied verbatim today.
+ * v0.5 introduces full per-project review-agent prompt tailoring (generated
+ * from README + ROADMAP), which this loader will gain as an additional
+ * transform step at that milestone.
+ *
+ * @param options repo + optional injected deps for testing
+ * @returns the YAML contents ready to write to `.github/workflows/ci.yml`
  * @throws {ClawError} when the template file cannot be read
  */
 export async function loadCiTemplate(
-  options: LoadCiTemplateOptions = {},
+  options: LoadCiTemplateOptions,
 ): Promise<string> {
   const read = options.deps?.readFile ?? defaultReadFile;
   const resolveTemplatePath =
     options.deps?.resolveTemplatePath ?? defaultResolveTemplatePath;
   const path = resolveTemplatePath();
+  let template: string;
   try {
-    return await read(path);
+    template = await read(path);
   } catch (err: unknown) {
     const detail = err instanceof Error ? err.message : String(err);
     throw new ClawError(
@@ -46,17 +57,15 @@ export async function loadCiTemplate(
       `Expected it at ${path}. Reinstall Claw Studio if the file is missing. (${detail})`,
     );
   }
+  return template.replaceAll("{{REPO}}", options.repo);
 }
 
 /** Default template path — resolved relative to this source file. */
 export function defaultResolveTemplatePath(): string {
-  // `import.meta.url` points at src/core/setup/ci-template.ts at build time,
-  // so the template sits one directory up in `core/templates/ci.yml`.
-  const here = dirname(fileURLToPath(import.meta.url));
-  return resolve(here, "..", "templates", "ci.yml");
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  return resolve(__dirname, "../templates/ci.yml");
 }
 
-/** Default implementation: read the file as UTF-8. */
-function defaultReadFile(path: string): Promise<string> {
+async function defaultReadFile(path: string): Promise<string> {
   return readFile(path, "utf8");
 }

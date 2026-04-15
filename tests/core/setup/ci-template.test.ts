@@ -8,21 +8,38 @@ import {
 import { ClawError } from "../../../src/core/types/errors.js";
 
 describe("loadCiTemplate", () => {
-  it("returns the canonical template contents via injected deps", async () => {
+  it("returns the template with {{REPO}} substituted", async () => {
     const contents = await loadCiTemplate({
+      repo: "owner/my-project",
       deps: {
         resolveTemplatePath: () => "/fake/ci.yml",
         readFile: async (path: string) => {
           expect(path).toBe("/fake/ci.yml");
-          return "name: CI\n";
+          return "You are Arch, a reviewer for {{REPO}}.\n";
         },
       },
     });
-    expect(contents).toBe("name: CI\n");
+    expect(contents).toBe("You are Arch, a reviewer for owner/my-project.\n");
+    expect(contents).not.toContain("{{REPO}}");
+  });
+
+  it("substitutes all occurrences of {{REPO}}", async () => {
+    const contents = await loadCiTemplate({
+      repo: "pA1nD/sheetsdb",
+      deps: {
+        resolveTemplatePath: () => "/fake/ci.yml",
+        readFile: async () =>
+          "{{REPO}} reviewed by {{REPO}} for {{REPO}}.",
+      },
+    });
+    expect(contents).toBe(
+      "pA1nD/sheetsdb reviewed by pA1nD/sheetsdb for pA1nD/sheetsdb.",
+    );
   });
 
   it("throws ClawError when the template cannot be read", async () => {
     const error = await loadCiTemplate({
+      repo: "owner/repo",
       deps: {
         resolveTemplatePath: () => "/missing.yml",
         readFile: async () => {
@@ -35,25 +52,24 @@ describe("loadCiTemplate", () => {
     expect((error as ClawError).message).toContain("ci.yml template");
   });
 
-  it("ships the canonical template with Claw Studio — 5 review agents + merge gate", async () => {
-    // Read the real bundled template (resolved relative to this source file)
-    // to catch regressions where the file is accidentally deleted or
-    // restructured away from the canonical pipeline.
+  it("ships the canonical template with 5 review agents + merge gate", async () => {
     const contents = await readFile(
       resolve(process.cwd(), "src", "core", "templates", "ci.yml"),
       "utf8",
     );
     expect(contents).toContain("name: CI");
-    // All 5 review agent jobs exist in the pipeline (YAML top-level keys
-    // are indented at column 2 inside `jobs:`).
+    // All 5 review agent jobs exist
     expect(contents).toContain("\n  arch:");
     expect(contents).toContain("\n  dx:");
     expect(contents).toContain("\n  security:");
     expect(contents).toContain("\n  perf:");
     expect(contents).toContain("\n  test-review:");
-    // And the merge-gate summary job.
+    // Merge-gate summary job
     expect(contents).toContain("\n  summary:");
     expect(contents).toContain("Review Summary");
+    // Generic {{REPO}} placeholder — not project-specific
+    expect(contents).toContain("{{REPO}}");
+    expect(contents).not.toContain("Claw Studio");
   });
 
   it("defaultResolveTemplatePath returns a path inside src/core/templates", () => {

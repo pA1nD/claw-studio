@@ -172,7 +172,7 @@ export async function runSetup(options: RunSetupOptions): Promise<boolean> {
     await tracker.writeFile(paths.claudeMd, claudeMdContents);
 
     hooks.onPhase?.("writing-ci");
-    const ci = await loadCiTemplate({ deps: options.deps?.ciTemplate });
+    const ci = await loadCiTemplate({ repo: `${options.ref.owner}/${options.ref.repo}`, deps: options.deps?.ciTemplate });
     await tracker.writeFile(paths.ciYml, ci);
 
     // 4. Branch protection
