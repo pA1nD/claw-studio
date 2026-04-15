@@ -2,7 +2,10 @@ import type { Octokit } from "@octokit/rest";
 import { parseRepoString } from "../github/repo-detect.js";
 import type { RepoRef } from "../github/repo-detect.js";
 import { withRateLimitHandling } from "../github/rate-limit.js";
-import { REVIEW_AGENT_HEADERS } from "../checks/types.js";
+import {
+  FAILING_CI_CONCLUSIONS,
+  REVIEW_AGENT_HEADERS,
+} from "../checks/types.js";
 
 /**
  * The four verdicts the orchestrator uses to decide what to do with an open
@@ -41,20 +44,6 @@ export const READY_TO_MERGE_MARKER = "### Ready to merge";
  * requested changes.
  */
 export const BLOCKING_ISSUES_MARKER = "### Blocking Issues";
-
-/**
- * Check-run conclusions that count as "CI is failing".
- *
- * Mirrors `check-12-ci-failing.ts` deliberately. Pending runs (conclusion
- * `null`) are explicitly NOT failures here — a still-running CI surfaces as
- * `pending` via the mergeable-state gate further down.
- */
-const FAILING_CONCLUSIONS: ReadonlySet<string> = new Set([
-  "failure",
-  "timed_out",
-  "cancelled",
-  "action_required",
-]);
 
 /**
  * The minimal PR metadata the monitor depends on. Kept narrower than
@@ -195,7 +184,7 @@ export async function getPRVerdict(
 }
 
 /**
- * True when any CI run has a conclusion from {@link FAILING_CONCLUSIONS}.
+ * True when any CI run has a conclusion from {@link FAILING_CI_CONCLUSIONS}.
  *
  * Null/undefined conclusions (still-running checks) are intentionally NOT
  * failures — pending CI is the `pending` verdict, not `ci-failing`.
@@ -203,7 +192,7 @@ export async function getPRVerdict(
 export function hasFailingRun(runs: readonly CIRun[]): boolean {
   for (const run of runs) {
     if (typeof run.conclusion !== "string") continue;
-    if (FAILING_CONCLUSIONS.has(run.conclusion)) return true;
+    if (FAILING_CI_CONCLUSIONS.has(run.conclusion)) return true;
   }
   return false;
 }

@@ -98,6 +98,26 @@ export const REVIEW_AGENT_HEADERS: readonly string[] = [
  */
 export const MAX_FIX_ATTEMPTS = 3;
 
+/**
+ * GitHub check-run conclusions that count as "CI is failing".
+ *
+ * Single source of truth for both CHECK 12 (halts the loop on a red PR) and
+ * the PR monitor (returns `"ci-failing"` to the orchestrator). If a new
+ * failing conclusion is added upstream, updating it here keeps both consumers
+ * in lockstep — the drift risk of two private copies is exactly what
+ * centralising fixes.
+ *
+ * Pending runs (conclusion `null`) are intentionally NOT in this set —
+ * still-running CI is the "pending" state, which lives with the PR monitor,
+ * not the inspector.
+ */
+export const FAILING_CI_CONCLUSIONS: ReadonlySet<string> = new Set([
+  "failure",
+  "timed_out",
+  "cancelled",
+  "action_required",
+]);
+
 /** True when a branch name is owned by the loop (prefixed `claw/`). */
 export function isClawBranch(name: string): boolean {
   return name.startsWith(CLAW_BRANCH_PREFIX);
