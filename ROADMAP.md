@@ -12,7 +12,7 @@
 
 ---
 
-## Current milestone: v0.0.1 — Foundation
+## Current milestone: v0.1 — The Loop
 
 ---
 
