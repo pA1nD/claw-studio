@@ -350,6 +350,25 @@ describe("rebaseOnDefault", () => {
     ).rejects.toBe(err);
   });
 
+  it("propagates non-rate-limit errors unchanged", async () => {
+    // Generic (non-Octokit-shaped) error — mirrors the propagation test every
+    // other public function carries, so the rate-limit wrapper's pass-through
+    // path is pinned identically across the module.
+    const err = new Error("network timeout");
+    await expect(
+      rebaseOnDefault(
+        stubClient,
+        REPO,
+        CLAW_BRANCH,
+        deps({
+          updatePullRequestBranch: async () => {
+            throw err;
+          },
+        }),
+      ),
+    ).rejects.toBe(err);
+  });
+
   it("rejects a non-claw branch without looking up a PR", async () => {
     const findPr = vi.fn(async () => 42);
     await expect(

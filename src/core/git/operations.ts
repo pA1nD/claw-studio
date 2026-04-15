@@ -4,20 +4,20 @@ import { parseRepoString } from "../github/repo-detect.js";
 import type { RepoRef } from "../github/repo-detect.js";
 import { withRateLimitHandling } from "../github/rate-limit.js";
 import { CLAW_BRANCH_PREFIX, isClawBranch } from "../checks/types.js";
-import { branchName as buildBranchName } from "../agents/branch-name.js";
+import { branchName } from "./branch-name.js";
 
 /**
- * Re-export of the canonical branch-name helper.
+ * Re-export of the canonical branch-name helper (defined in
+ * `./branch-name.ts`, this module's sibling).
  *
  * CLAUDE.md designates `src/core/git/` as the single home for git concerns, so
- * the git operations module is the single entry point — but the function itself
- * lives with the implementation agent (issue #3) that seeded it. Importing from
- * `../agents/branch-name.js` directly is also supported; both paths resolve to
- * the same implementation so the existing branch-name tests continue to pin
- * the slug rules. Duplicating the logic here would create the exact kind of
- * drift risk `FAILING_CI_CONCLUSIONS` was centralised to prevent.
+ * the git operations module is the public entry point callers import from.
+ * The `core/agents/branch-name.ts` module re-exports from `core/git/` for
+ * backwards compatibility with the implementation agent (issue #3) that
+ * originally seeded the helper — the dependency direction now flows the
+ * correct way (agents → git), not the inverse.
  */
-export const branchName = buildBranchName;
+export { branchName };
 
 /**
  * Error thrown when a rebase or merge cannot complete because the default
@@ -130,8 +130,15 @@ export interface SquashMergeDeps {
 export interface DeleteBranchDeps {
   /**
    * Delete a git ref. Defaults to `git.deleteRef`.
+   *
+   * `shortRef` is the ref **without** the `refs/` prefix — GitHub's
+   * `git.deleteRef` accepts `heads/{branch}` (not `refs/heads/{branch}`),
+   * which is the opposite convention from `git.createRef` (see
+   * {@link CreateBranchDeps.createRef}). Passing `refs/heads/{branch}` here
+   * would surface as a silent 422 from GitHub, so the parameter name mirrors
+   * the API contract rather than the `createRef` seam's shape.
    */
-  deleteRef?: (ref: RepoRef, fullRef: string) => Promise<void>;
+  deleteRef?: (ref: RepoRef, shortRef: string) => Promise<void>;
 }
 
 /**
@@ -218,7 +225,7 @@ export async function rebaseOnDefault(
     if (prNumber === null) {
       throw new ClawError(
         `no open PR found for branch ${branch}.`,
-        "rebaseOnDefault requires an open PR. For a fresh branch without a PR, create the branch via `createBranch` and let the implementation agent open the PR.",
+        "Open a pull request for this branch before the loop resumes — or run `claw status` to let the inspector diagnose the correct next step.",
       );
     }
     try {
@@ -527,12 +534,12 @@ function buildMergePullRequest(
 /** Build the default `deleteRef` seam. */
 function buildDeleteRef(
   client: Octokit,
-): (ref: RepoRef, fullRef: string) => Promise<void> {
-  return async (ref, fullRef) => {
+): (ref: RepoRef, shortRef: string) => Promise<void> {
+  return async (ref, shortRef) => {
     await client.git.deleteRef({
       owner: ref.owner,
       repo: ref.repo,
-      ref: fullRef,
+      ref: shortRef,
     });
   };
 }
