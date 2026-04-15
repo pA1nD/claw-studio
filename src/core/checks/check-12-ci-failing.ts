@@ -1,7 +1,7 @@
 import type { Octokit } from "@octokit/rest";
 import { ClawError } from "../types/errors.js";
 import type { RepoRef } from "../github/repo-detect.js";
-import { isClawPullRequest } from "./types.js";
+import { FAILING_CI_CONCLUSIONS, isClawPullRequest } from "./types.js";
 import type { CheckResult, PullRequestInfo } from "./types.js";
 
 /** A failing CI check on a PR — only the field we surface to the human. */
@@ -76,20 +76,16 @@ export async function check12CIFailing(
  * Claw Studio `ci.yml` writes to (via GitHub Actions). The legacy combined
  * status API would miss check-suite reports.
  *
- * Treats `"failure"`, `"timed_out"`, `"cancelled"`, and `"action_required"`
- * as failures. `"neutral"`, `"success"`, `"skipped"`, and `"stale"` pass.
+ * The set of "failing" conclusions lives in `checks/types.ts` as
+ * {@link FAILING_CI_CONCLUSIONS} so CHECK 12 and the PR monitor never drift
+ * apart on what counts as red.
+ *
  * `null` (still running) is intentionally NOT a failure — pending state
  * belongs to the PR monitor.
  */
 function buildDefaultListFailing(
   client: Octokit,
 ): (ref: RepoRef, headSha: string) => Promise<FailingCheck[]> {
-  const failingConclusions = new Set([
-    "failure",
-    "timed_out",
-    "cancelled",
-    "action_required",
-  ]);
   return async (ref, headSha) => {
     const runs = await client.paginate(client.checks.listForRef, {
       owner: ref.owner,
@@ -99,7 +95,7 @@ function buildDefaultListFailing(
     });
     return runs
       .filter((run) =>
-        typeof run.conclusion === "string" && failingConclusions.has(run.conclusion),
+        typeof run.conclusion === "string" && FAILING_CI_CONCLUSIONS.has(run.conclusion),
       )
       .map((run) => ({ name: run.name }));
   };
