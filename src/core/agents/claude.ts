@@ -151,25 +151,51 @@ async function defaultRunClaude(invocation: ClaudeInvocation): Promise<ClaudeRes
     });
     return parseClaudeOutput(stdout);
   } catch (err: unknown) {
-    if (isCommandNotFound(err)) {
-      throw new ClawError(
-        "`claude` CLI not found on PATH.",
-        "Install Claude Code before running the loop: https://docs.anthropic.com/en/docs/claude-code",
-      );
-    }
-    if (isTimeout(err)) {
-      throw new ClawError(
-        "`claude -p` did not respond in time.",
-        `The subprocess was killed after ${Math.round(invocation.timeoutMs / 1000)}s. Re-run \`claw start\` to retry.`,
-      );
-    }
     if (err instanceof ClawError) throw err;
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new ClawError(
-      "`claude -p` failed.",
-      `Underlying error: ${detail}`,
+    throw mapClaudeSubprocessError(err, invocation.timeoutMs);
+  }
+}
+
+/**
+ * Translate a `claude` subprocess error into a {@link ClawError} in the
+ * standard `[CLAW] Stopped` shape.
+ *
+ * Covers the three distinct failure modes the runtime surfaces:
+ *   - `ENOENT` — the `claude` binary is not on PATH.
+ *   - `timedOut` — the subprocess exceeded its hard timeout.
+ *   - anything else — a non-zero exit, a signal, or an unexpected throwable.
+ *
+ * Exposed as a pure function so each branch is unit-testable without
+ * running a real subprocess. The runtime catch simply re-throws the
+ * {@link ClawError} this returns.
+ *
+ * @param err       the thrown value from the `execa` call
+ * @param timeoutMs the configured timeout, surfaced in the timeout hint
+ * @returns the typed error to throw
+ */
+export function mapClaudeSubprocessError(err: unknown, timeoutMs: number): ClawError {
+  if (isCommandNotFound(err)) {
+    return new ClawError(
+      "`claude` CLI not found on PATH.",
+      "Install Claude Code before running the loop: https://docs.anthropic.com/en/docs/claude-code",
     );
   }
+  if (isTimeout(err)) {
+    return new ClawError(
+      "`claude -p` did not respond in time.",
+      `The subprocess was killed after ${Math.round(timeoutMs / 1000)}s. Re-run \`claw start\` to retry.`,
+    );
+  }
+  // execa v8 exposes `shortMessage` — just the command name + exit code,
+  // without subprocess stderr. Using it here keeps agent-diagnostic output
+  // out of error surfaces that may later be logged or reported remotely.
+  const shortMessage = readStringProp(err, "shortMessage");
+  const detail =
+    shortMessage ?? (err instanceof Error ? err.message : String(err));
+  return new ClawError(
+    "`claude -p` failed.",
+    `Underlying error: ${detail}`,
+  );
 }
 
 /**
@@ -218,15 +244,30 @@ export function parseClaudeOutput(stdout: string): ClaudeResult {
  * Narrow a thrown value to "command not found" — mirrors the check in
  * `core/setup/claude-md.ts` so the error shape is identical across both
  * subprocess call sites.
+ *
+ * @param err any thrown value
+ * @returns true when `err` represents an ENOENT from `execa`
  */
-function isCommandNotFound(err: unknown): boolean {
+export function isCommandNotFound(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const record = err as Record<string, unknown>;
   return record["code"] === "ENOENT" || record["errno"] === -2;
 }
 
-/** Narrow a thrown value to an `execa` timeout. */
-function isTimeout(err: unknown): boolean {
+/**
+ * Narrow a thrown value to an `execa` timeout.
+ *
+ * @param err any thrown value
+ * @returns true when `err` represents a timed-out subprocess
+ */
+export function isTimeout(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   return (err as Record<string, unknown>)["timedOut"] === true;
+}
+
+/** Read `err[key]` when it is a non-empty string, or `undefined`. */
+function readStringProp(err: unknown, key: string): string | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const val = (err as Record<string, unknown>)[key];
+  return typeof val === "string" && val.length > 0 ? val : undefined;
 }

@@ -194,6 +194,50 @@ describe("runImplementationAgent", () => {
       }),
     ).rejects.toBeInstanceOf(ClawError);
   });
+
+  it("surfaces a readRepoFile failure as a ClawError (not swallowed by the prior-notes safety net)", async () => {
+    const { deps } = buildDeps({
+      readRepoFile: vi.fn(async () => {
+        throw new ClawError(
+          "could not read README.md from pA1nD/claw-studio.",
+          "check permissions.",
+        );
+      }),
+    });
+    const client = stubOctokit();
+
+    await expect(
+      runImplementationAgent(client, { ...baseInputs, deps }),
+    ).rejects.toBeInstanceOf(ClawError);
+  });
+
+  it("translates a GitHub rate-limit error into the standard halt message", async () => {
+    const { deps } = buildDeps({
+      readRepoFile: vi.fn(async () => {
+        // Mimic the shape Octokit throws on a primary rate limit.
+        const err = Object.assign(new Error("API rate limit exceeded"), {
+          status: 403,
+          response: {
+            headers: {
+              "x-ratelimit-remaining": "0",
+              "x-ratelimit-reset": "1700000000",
+            },
+          },
+        });
+        throw err;
+      }),
+    });
+    const client = stubOctokit();
+
+    const error = await runImplementationAgent(client, {
+      ...baseInputs,
+      deps,
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ClawError);
+    expect((error as ClawError).message).toBe("GitHub API rate limit reached.");
+    expect((error as ClawError).hint).toContain("Limit resets at");
+  });
 });
 
 describe("runFixCycle", () => {

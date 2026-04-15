@@ -2,6 +2,7 @@ import type { Octokit } from "@octokit/rest";
 import { ClawError } from "../types/errors.js";
 import { parseRepoString } from "../github/repo-detect.js";
 import type { RepoRef } from "../github/repo-detect.js";
+import { withRateLimitHandling } from "../github/rate-limit.js";
 import type { Issue } from "../roadmap/parser.js";
 import { MAX_FIX_ATTEMPTS, NEEDS_HUMAN_LABEL } from "../checks/types.js";
 import { resolveSetupPaths } from "../setup/paths.js";
@@ -22,9 +23,9 @@ import {
   deleteSession,
   loadSession,
   saveSession,
+  type SessionFile,
   type SessionFs,
 } from "./session.js";
-import type { SessionFile } from "../checks/types.js";
 
 /** Outcome of a single {@link runImplementationAgent} call. */
 export interface ImplementationOutcome {
@@ -166,50 +167,52 @@ export async function runImplementationAgent(
 
   const branch = buildBranchName(inputs.issue.number, inputs.issue.title);
 
-  const [priorReviewNotes, readme] = await Promise.all([
-    fetchPriorReviewNotesSafe(client, ref, inputs.issue.number, deps.priorReviewNotes),
-    readRepoFile(ref, "README.md"),
-  ]);
+  return withRateLimitHandling(async () => {
+    const [priorReviewNotes, readme] = await Promise.all([
+      fetchPriorReviewNotesSafe(client, ref, inputs.issue.number, deps.priorReviewNotes),
+      readRepoFile(ref, "README.md"),
+    ]);
 
-  const prompt = buildContextPrompt({
-    issue: inputs.issue,
-    branchName: branch,
-    readme,
-    roadmap: inputs.roadmap,
-    milestoneIssues: inputs.milestoneIssues,
-    milestoneName: inputs.milestoneName,
-    priorReviewNotes,
+    const prompt = buildContextPrompt({
+      issue: inputs.issue,
+      branchName: branch,
+      readme,
+      roadmap: inputs.roadmap,
+      milestoneIssues: inputs.milestoneIssues,
+      milestoneName: inputs.milestoneName,
+      priorReviewNotes,
+    });
+
+    const paths = resolveSetupPaths(inputs.cwd);
+    const claudeResult = await spawnImplementationSession({
+      systemPromptPath: paths.claudeMd,
+      prompt,
+      cwd: inputs.cwd,
+      deps: deps.claude,
+    });
+
+    const session: SessionFile = {
+      issueNumber: inputs.issue.number,
+      sessionId: claudeResult.sessionId,
+      fixAttempts: 0,
+    };
+    await saveSession(inputs.cwd, session, deps.sessionFs);
+
+    const defaultBranch = await readDefaultBranch(client, ref);
+    const openPR = deps.openPullRequest ?? buildDefaultOpenPullRequest(client);
+    const pr = await openPR(ref, {
+      headBranch: branch,
+      baseBranch: defaultBranch,
+      title: inputs.issue.title,
+      body: buildPullRequestBody(inputs.issue.number, claudeResult),
+    });
+
+    return {
+      branch,
+      prNumber: pr.number,
+      sessionId: claudeResult.sessionId,
+    };
   });
-
-  const paths = resolveSetupPaths(inputs.cwd);
-  const claudeResult = await spawnImplementationSession({
-    systemPromptPath: paths.claudeMd,
-    prompt,
-    cwd: inputs.cwd,
-    deps: deps.claude,
-  });
-
-  const session: SessionFile = {
-    issueNumber: inputs.issue.number,
-    sessionId: claudeResult.sessionId,
-    fixAttempts: 0,
-  };
-  await saveSession(inputs.cwd, session, deps.sessionFs);
-
-  const defaultBranch = await readDefaultBranch(client, ref);
-  const openPR = deps.openPullRequest ?? buildDefaultOpenPullRequest(client);
-  const pr = await openPR(ref, {
-    headBranch: branch,
-    baseBranch: defaultBranch,
-    title: inputs.issue.title,
-    body: buildPullRequestBody(inputs.issue.number, claudeResult),
-  });
-
-  return {
-    branch,
-    prNumber: pr.number,
-    sessionId: claudeResult.sessionId,
-  };
 }
 
 /**
@@ -252,62 +255,62 @@ export async function runFixCycle(
     );
   }
 
-  // Gate BEFORE spending a Claude run. CHECK 11 catches the same threshold
-  // but checks in-between cycles — this guard makes `runFixCycle` safe to
-  // call directly without re-running the inspector.
-  if (existing.fixAttempts >= MAX_FIX_ATTEMPTS) {
-    await escalateIssue(client, {
+  return withRateLimitHandling(async () => {
+    // Gate BEFORE spending a Claude run. CHECK 11 catches the same threshold
+    // but checks in-between cycles — this guard makes `runFixCycle` safe to
+    // call directly without re-running the inspector.
+    if (existing.fixAttempts >= MAX_FIX_ATTEMPTS) {
+      await escalateIssue(client, {
+        issue: inputs.issue,
+        cwd: inputs.cwd,
+        repo: inputs.repo,
+        prNumber: inputs.prNumber,
+        attemptsMade: existing.fixAttempts,
+        reviewComments: inputs.reviewComments,
+        deps,
+      });
+      return { type: "escalated", attemptsMade: existing.fixAttempts };
+    }
+
+    const attemptNumber = existing.fixAttempts + 1;
+    const prompt = buildFixPrompt({
       issue: inputs.issue,
-      cwd: inputs.cwd,
-      repo: inputs.repo,
       prNumber: inputs.prNumber,
-      attemptsMade: existing.fixAttempts,
       reviewComments: inputs.reviewComments,
-      deps,
+      attemptNumber,
     });
-    return { type: "escalated", attemptsMade: existing.fixAttempts };
-  }
 
-  const attemptNumber = existing.fixAttempts + 1;
-  const prompt = buildFixPrompt({
-    issue: inputs.issue,
-    prNumber: inputs.prNumber,
-    reviewComments: inputs.reviewComments,
-    attemptNumber,
-  });
-
-  const claudeResult = await resumeImplementationSession({
-    sessionId: existing.sessionId,
-    prompt,
-    cwd: inputs.cwd,
-    deps: deps.claude,
-  });
-
-  const updated: SessionFile = {
-    issueNumber: existing.issueNumber,
-    // Resume may return a new session id when Claude forks the history —
-    // persist whatever it reported so the next resume still lines up.
-    sessionId: claudeResult.sessionId,
-    fixAttempts: attemptNumber,
-  };
-  await saveSession(inputs.cwd, updated, deps.sessionFs);
-
-  if (attemptNumber >= MAX_FIX_ATTEMPTS) {
-    await escalateIssue(client, {
-      issue: inputs.issue,
+    const claudeResult = await resumeImplementationSession({
+      sessionId: existing.sessionId,
+      prompt,
       cwd: inputs.cwd,
-      repo: inputs.repo,
-      prNumber: inputs.prNumber,
-      attemptsMade: attemptNumber,
-      reviewComments: inputs.reviewComments,
-      deps,
-      // Session already saved above — escalate only has to clean up.
-      sessionAlreadyPersisted: true,
+      deps: deps.claude,
     });
-    return { type: "escalated", attemptsMade: attemptNumber };
-  }
 
-  return { type: "fixed", attemptNumber, sessionId: claudeResult.sessionId };
+    const updated: SessionFile = {
+      issueNumber: existing.issueNumber,
+      // Resume may return a new session id when Claude forks the history —
+      // persist whatever it reported so the next resume still lines up.
+      sessionId: claudeResult.sessionId,
+      fixAttempts: attemptNumber,
+    };
+    await saveSession(inputs.cwd, updated, deps.sessionFs);
+
+    if (attemptNumber >= MAX_FIX_ATTEMPTS) {
+      await escalateIssue(client, {
+        issue: inputs.issue,
+        cwd: inputs.cwd,
+        repo: inputs.repo,
+        prNumber: inputs.prNumber,
+        attemptsMade: attemptNumber,
+        reviewComments: inputs.reviewComments,
+        deps,
+      });
+      return { type: "escalated", attemptsMade: attemptNumber };
+    }
+
+    return { type: "fixed", attemptNumber, sessionId: claudeResult.sessionId };
+  });
 }
 
 /** Inputs to {@link escalateIssue}. */
@@ -326,11 +329,6 @@ export interface EscalateIssueInputs {
   reviewComments: readonly ReviewComment[];
   /** Optional injected dependencies for testing. */
   deps?: ImplementationAgentDeps;
-  /**
-   * Internal flag used by `runFixCycle` to avoid touching the session file
-   * twice on the same code path. Defaults to `false`.
-   */
-  sessionAlreadyPersisted?: boolean;
 }
 
 /**
@@ -358,8 +356,10 @@ export async function escalateIssue(
   const addLabel = deps.addLabel ?? buildDefaultAddLabel(client);
   const postComment = deps.postPRComment ?? buildDefaultPostComment(client);
 
-  await addLabel(ref, inputs.issue.number, NEEDS_HUMAN_LABEL);
-  await postComment(ref, inputs.prNumber, buildEscalationComment(inputs));
+  await withRateLimitHandling(async () => {
+    await addLabel(ref, inputs.issue.number, NEEDS_HUMAN_LABEL);
+    await postComment(ref, inputs.prNumber, buildEscalationComment(inputs));
+  });
   await deleteSession(inputs.cwd, inputs.issue.number, deps.sessionFs);
 }
 
