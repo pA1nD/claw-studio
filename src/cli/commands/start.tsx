@@ -1,8 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { ClawError } from "../../core/types/errors.js";
 import { detectRepo } from "../../core/github/repo-detect.js";
-import { resolveSetupPaths } from "../../core/setup/paths.js";
-import type { ClawConfig } from "../../core/setup/config.js";
+import { readConfig } from "../../core/setup/config.js";
 import { startLoop } from "../../core/loop/start-loop.js";
 import type { LoopExitResult } from "../../core/loop/start-loop.js";
 import type { CycleResult } from "../../core/loop/orchestrator.js";
@@ -36,7 +33,7 @@ export async function startCommand(options: StartOptions): Promise<void> {
   const ref = await detectRepo({ explicit: options.repo });
   const repoString = `${ref.owner}/${ref.repo}`;
 
-  const config = await loadClawConfig(process.cwd(), repoString);
+  const config = await readConfig(process.cwd(), repoString);
 
   const result = await startLoop(config, {
     cwd: process.cwd(),
@@ -107,54 +104,3 @@ async function renderExit(
   );
 }
 
-/**
- * Load `.claw/config.json` and return the parsed {@link ClawConfig}.
- *
- * If the file is missing or malformed, halts with a typed error pointing the
- * human at `claw setup`. The fallback to the detected repo string is
- * intentional: setup writes the canonical `repo` field, so reading the
- * resolved value back from disk is a sanity check, not a re-derivation.
- */
-async function loadClawConfig(
-  cwd: string,
-  detectedRepo: string,
-): Promise<ClawConfig> {
-  const path = resolveSetupPaths(cwd).configJson;
-  let raw: string;
-  try {
-    raw = await readFile(path, "utf8");
-  } catch {
-    throw new ClawError(
-      "no .claw/config.json found.",
-      "Run `claw setup` first to initialise this repo for the loop.",
-    );
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new ClawError(
-      ".claw/config.json is not valid JSON.",
-      "Re-run `claw setup --overwrite` to regenerate it.",
-    );
-  }
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new ClawError(
-      ".claw/config.json was not a JSON object.",
-      "Re-run `claw setup --overwrite` to regenerate it.",
-    );
-  }
-  const shape = parsed as Partial<ClawConfig>;
-  const repo = typeof shape.repo === "string" && shape.repo.length > 0
-    ? shape.repo
-    : detectedRepo;
-  const pollInterval =
-    typeof shape.pollInterval === "number" && shape.pollInterval > 0
-      ? shape.pollInterval
-      : 60;
-  const clawVersion =
-    typeof shape.clawVersion === "string" && shape.clawVersion.length > 0
-      ? shape.clawVersion
-      : "0.0.1";
-  return { repo, pollInterval, clawVersion };
-}

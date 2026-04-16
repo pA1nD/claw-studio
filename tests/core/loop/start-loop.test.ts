@@ -7,6 +7,7 @@ import {
   startLoop,
 } from "../../../src/core/loop/start-loop.js";
 import type { CycleResult } from "../../../src/core/loop/orchestrator.js";
+import { IDLE_WARNING_MS } from "../../../src/core/loop/orchestrator.js";
 import type { ControlFs } from "../../../src/core/loop/control.js";
 import type { LogFs } from "../../../src/core/loop/log.js";
 
@@ -498,5 +499,222 @@ describe("startLoop — exit conditions", () => {
     // The loop ran multiple cycles (each milestone-complete), only exiting
     // when stop was flipped.
     expect(cycles).toBeGreaterThanOrEqual(2);
+  });
+});
+
+/**
+ * The idle warning fires when `now() - lastActionAt > IDLE_WARNING_MS` AND
+ * `idleWarningEmitted` is false. To exercise it deterministically each test
+ * controls the wall clock via the `now` seam: the first cycle establishes
+ * `lastActionAt`, subsequent cycles fast-forward past the threshold.
+ *
+ * The auto-continue cycle returns `milestone-complete` repeatedly without
+ * `action-taken` — the perfect "no state change" signal the idle detector is
+ * built to surface.
+ */
+describe("startLoop — idle warning", () => {
+  /** Build inspector deps that always return milestone-complete (no action). */
+  function noActionInspectorDeps() {
+    return {
+      readRoadmap: async () => "## Current milestone: v0.1\n",
+      listIssuesForLabel: async () => [
+        {
+          number: 7,
+          title: "x",
+          state: "closed" as const,
+          labels: ["v0.1"],
+          body: "",
+        },
+      ],
+      readDefaultBranch: async () => "main",
+      listBranches: async () => [{ name: "main", sha: "x" }],
+      listOpenPullRequests: async () => [],
+      compareBranchToDefault: async () => ({ behindBy: 0 }),
+      listPRCommentBodies: async () => [],
+      readSession: async () => null,
+      listFailingChecks: async () => [],
+    };
+  }
+
+  function noActionRoadmapDeps() {
+    return {
+      readRoadmap: async () => "## Current milestone: v0.1\n",
+      listIssuesForLabel: async () => [
+        {
+          number: 7,
+          title: "x",
+          state: "closed" as const,
+          labels: ["v0.1"],
+          body: "",
+        },
+      ],
+    };
+  }
+
+  it("appends a WARNING line after IDLE_WARNING_MS with no action-taken", async () => {
+    const ctrl = controlFs();
+    const log = logFs();
+    // First `now()` call sets `lastActionAt` to 0; after one cycle,
+    // fast-forward past the threshold so the idle check fires; after the
+    // second cycle, set the stop flag so the loop exits.
+    let nowCalls = 0;
+    const now = () => {
+      nowCalls += 1;
+      // Calls 1 and 2: time 0 (initial lastActionAt + first idle check baseline).
+      // From call 3 onwards: past the idle threshold.
+      return nowCalls <= 1 ? 0 : IDLE_WARNING_MS + 1;
+    };
+    let cycles = 0;
+    const sleep = vi.fn(async () => {
+      cycles += 1;
+      if (cycles >= 2) {
+        ctrl.files.add(`${CWD}/.claw/control/stop`);
+      }
+    });
+
+    await startLoop(CONFIG, {
+      cwd: CWD,
+      autoContinue: true,
+      controlFs: ctrl,
+      logFs: log,
+      sleep,
+      now,
+      client: stubClient,
+      deps: {
+        roadmap: noActionRoadmapDeps(),
+        inspector: noActionInspectorDeps(),
+      },
+    });
+
+    const warnings = log.lines.filter((l) => l.includes("WARNING idle"));
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+    // The warning text references the threshold in minutes.
+    expect(warnings[0]).toContain(`${Math.floor(IDLE_WARNING_MS / 60_000)}m`);
+  });
+
+  it("emits the idle warning at most once until the next action-taken cycle", async () => {
+    const ctrl = controlFs();
+    const log = logFs();
+    let nowCalls = 0;
+    const now = () => {
+      nowCalls += 1;
+      return nowCalls <= 1 ? 0 : IDLE_WARNING_MS + 1;
+    };
+    let cycles = 0;
+    const sleep = vi.fn(async () => {
+      cycles += 1;
+      // Run several idle cycles so the de-dup flag has multiple chances to fire
+      // a duplicate warning.
+      if (cycles >= 4) {
+        ctrl.files.add(`${CWD}/.claw/control/stop`);
+      }
+    });
+
+    await startLoop(CONFIG, {
+      cwd: CWD,
+      autoContinue: true,
+      controlFs: ctrl,
+      logFs: log,
+      sleep,
+      now,
+      client: stubClient,
+      deps: {
+        roadmap: noActionRoadmapDeps(),
+        inspector: noActionInspectorDeps(),
+      },
+    });
+
+    const warnings = log.lines.filter((l) => l.includes("WARNING idle"));
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("resets the idle detector after an action-taken cycle so a fresh idle period re-warns", async () => {
+    const ctrl = controlFs();
+    const log = logFs();
+    // Use the cycle's onCycle callback to drive the cycle plan:
+    //   cycle 1 — milestone-complete (idle, fires warning #1)
+    //   cycle 2 — action-taken (resets the idle de-dup flag)
+    //   cycle 3+ — milestone-complete (idle again, fires warning #2)
+    let onCycleCount = 0;
+    let openIssueOnNextCycle = false;
+    const buildIssues = () => [
+      {
+        number: 7,
+        title: "x",
+        state: openIssueOnNextCycle ? ("open" as const) : ("closed" as const),
+        labels: ["v0.1"],
+        body: "",
+      },
+    ];
+
+    const sleep = vi.fn(async () => undefined);
+    // Each call to `now()` advances the clock by the full idle threshold + 1ms
+    // so the gap from `lastActionAt` to the next idle check is always over
+    // the threshold. The startup `now()` sets `lastActionAt`; subsequent
+    // calls (idle check + post-action reset) walk the clock forward.
+    let clockTick = 0;
+    const now = () => {
+      clockTick += IDLE_WARNING_MS + 1;
+      return clockTick;
+    };
+
+    await startLoop(CONFIG, {
+      cwd: CWD,
+      autoContinue: true,
+      controlFs: ctrl,
+      logFs: log,
+      sleep,
+      now,
+      onCycle: (result) => {
+        onCycleCount += 1;
+        // After the first idle cycle, switch to "action" mode for cycle 2.
+        if (onCycleCount === 1) {
+          openIssueOnNextCycle = true;
+        }
+        // After the action cycle, revert to idle so cycle 3 fires the second
+        // warning.
+        if (result.type === "action-taken") {
+          openIssueOnNextCycle = false;
+        }
+        // Stop after enough cycles to give both warnings a chance to land.
+        if (onCycleCount >= 4) {
+          ctrl.files.add(`${CWD}/.claw/control/stop`);
+        }
+      },
+      client: stubClient,
+      deps: {
+        roadmap: {
+          readRoadmap: async () => "## Current milestone: v0.1\n",
+          listIssuesForLabel: async () => buildIssues(),
+        },
+        inspector: {
+          readRoadmap: async () => "## Current milestone: v0.1\n",
+          listIssuesForLabel: async () => buildIssues(),
+          readDefaultBranch: async () => "main",
+          listBranches: async () => [{ name: "main", sha: "x" }],
+          listOpenPullRequests: async () => [],
+          compareBranchToDefault: async () => ({ behindBy: 0 }),
+          listPRCommentBodies: async () => [],
+          readSession: async () => null,
+          listFailingChecks: async () => [],
+        },
+        // Without this, the orchestrator falls back to buildDefaultListOpenPRs
+        // which calls the (stub) Octokit and throws — turning the action cycle
+        // into a halt and exiting the loop before we observe the second
+        // warning. The inspector's listOpenPullRequests is a separate dep
+        // (used by CHECKS 5/7/8/10/11/12/13).
+        listOpenPullRequests: async () => [],
+        readRoadmapContent: async () => "## Current milestone: v0.1\n",
+        runImplementationAgent: async () => ({
+          branch: "claw/issue-7-x",
+          prNumber: 100,
+          sessionId: "s",
+        }),
+      },
+    });
+
+    const warnings = log.lines.filter((l) => l.includes("WARNING idle"));
+    // Two warnings — the de-dup flag reset after the action-taken cycle.
+    expect(warnings.length).toBeGreaterThanOrEqual(2);
   });
 });

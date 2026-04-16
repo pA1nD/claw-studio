@@ -1,4 +1,7 @@
+import { readFile } from "node:fs/promises";
 import type { RepoRef } from "../github/repo-detect.js";
+import { ClawError } from "../types/errors.js";
+import { resolveSetupPaths } from "./paths.js";
 
 /** Shape of `.claw/config.json` written by setup. */
 export interface ClawConfig {
@@ -45,4 +48,89 @@ export function buildConfig(
  */
 export function serializeConfig(config: ClawConfig): string {
   return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+/** Injectable filesystem seam for {@link readConfig} so tests skip disk I/O. */
+export interface ReadConfigDeps {
+  /**
+   * Read a UTF-8 file. Must resolve to `null` when the file is missing — any
+   * other error must surface unchanged so a permissions failure doesn't get
+   * mis-reported as "no config file".
+   */
+  readFile?: (path: string) => Promise<string | null>;
+}
+
+/**
+ * Read and validate `.claw/config.json` for a target project.
+ *
+ * Lives in the core setup module so every caller — the loop, future
+ * dashboard processes, programmatic API consumers — shares the same parsing
+ * and the same default fallbacks. CLI commands that need a config thread
+ * through here rather than re-implementing the parsing.
+ *
+ * Halts with a typed {@link ClawError} when the file is missing, invalid
+ * JSON, or not a JSON object. When individual fields are missing, falls back
+ * to the documented defaults: `pollInterval: 60`, `clawVersion:
+ * CURRENT_CLAW_VERSION`. The `repo` field falls back to `detectedRepo` so
+ * `claw start --repo owner/x` keeps working when the config has been
+ * partially clobbered.
+ *
+ * @param cwd          target project working directory (where `.claw/` lives)
+ * @param detectedRepo fallback repo string when the config has no `repo` field
+ * @param deps         optional filesystem seam for testing
+ * @returns the parsed {@link ClawConfig}
+ * @throws {ClawError} when the file is missing, invalid JSON, or not an object
+ */
+export async function readConfig(
+  cwd: string,
+  detectedRepo: string,
+  deps: ReadConfigDeps = {},
+): Promise<ClawConfig> {
+  const read = deps.readFile ?? defaultReadConfigFile;
+  const path = resolveSetupPaths(cwd).configJson;
+  const raw = await read(path);
+  if (raw === null) {
+    throw new ClawError(
+      "no .claw/config.json found.",
+      "Run `claw setup` first to initialise this repo for the loop.",
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ClawError(
+      ".claw/config.json is not valid JSON.",
+      "Re-run `claw setup --overwrite` to regenerate it.",
+    );
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new ClawError(
+      ".claw/config.json was not a JSON object.",
+      "Re-run `claw setup --overwrite` to regenerate it.",
+    );
+  }
+  const shape = parsed as Partial<ClawConfig>;
+  const repo =
+    typeof shape.repo === "string" && shape.repo.length > 0
+      ? shape.repo
+      : detectedRepo;
+  const pollInterval =
+    typeof shape.pollInterval === "number" && shape.pollInterval > 0
+      ? shape.pollInterval
+      : DEFAULT_POLL_INTERVAL_SECONDS;
+  const clawVersion =
+    typeof shape.clawVersion === "string" && shape.clawVersion.length > 0
+      ? shape.clawVersion
+      : CURRENT_CLAW_VERSION;
+  return { repo, pollInterval, clawVersion };
+}
+
+/** Default disk-backed config reader — returns `null` on any read error. */
+async function defaultReadConfigFile(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return null;
+  }
 }

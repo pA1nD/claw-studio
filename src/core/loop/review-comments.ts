@@ -105,20 +105,26 @@ export { BLOCKING_ISSUES_MARKER };
 /**
  * Build the default PR-comment lister — paginates `issues.listComments` (the
  * GitHub endpoint that serves PR conversations), mirroring the PR monitor.
+ *
+ * Wraps the paginated call in `withRateLimitHandling` so a rate-limit hit
+ * during the fix cycle's comment fetch surfaces as the standard `[CLAW]
+ * Stopped — GitHub API rate limit reached.` error with a reset-time hint —
+ * matching the pattern every other default API seam in the loop module uses.
  */
 function buildDefaultListPRComments(
   client: Octokit,
 ): (ref: RepoRef, prNumber: number) => Promise<RawPRComment[]> {
-  return async (ref, prNumber) => {
-    const rows = await client.paginate(client.issues.listComments, {
-      owner: ref.owner,
-      repo: ref.repo,
-      issue_number: prNumber,
-      per_page: 100,
+  return async (ref, prNumber) =>
+    withRateLimitHandling(async () => {
+      const rows = await client.paginate(client.issues.listComments, {
+        owner: ref.owner,
+        repo: ref.repo,
+        issue_number: prNumber,
+        per_page: 100,
+      });
+      return rows.map((row) => ({
+        body: row.body ?? "",
+        author: row.user?.login ?? "unknown",
+      }));
     });
-    return rows.map((row) => ({
-      body: row.body ?? "",
-      author: row.user?.login ?? "unknown",
-    }));
-  };
 }
