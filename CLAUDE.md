@@ -70,12 +70,17 @@ When Claw Studio sets up a target repo, it creates exactly these files:
 
 ```
 .claw/
+  .env              ← GITHUB_PAT + CLAUDE_CODE_OAUTH_TOKEN (0600, gitignored)
   CLAUDE.md         ← generated agent instructions for that project
-  config.json       ← { repo, pollInterval, clawVersion }
+  config.json       ← { repo, pollInterval, clawVersion, runnerCount }
   sessions/         ← { issueNumber, sessionId, fixAttempts } per in-flight issue
+  runners/
+    docker-compose.yml  ← generated self-hosted runner pool config
 .github/workflows/
   ci.yml            ← lint + typecheck + tests + 5 review agents + summary
 ```
+
+`.claw/` is gitignored — tokens never enter version control. `claw setup` ensures the entry is present.
 
 Plus it reads (never modifies):
 ```

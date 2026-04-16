@@ -11,6 +11,11 @@ export interface ClawConfig {
   pollInterval: number;
   /** The Claw Studio version that wrote this file. */
   clawVersion: string;
+  /**
+   * Number of Docker-backed self-hosted runners `claw setup` provisions
+   * via `.claw/runners/docker-compose.yml`. Default: {@link DEFAULT_RUNNER_COUNT}.
+   */
+  runnerCount: number;
 }
 
 /** The current Claw Studio version that setup stamps into `config.json`. */
@@ -20,20 +25,32 @@ export const CURRENT_CLAW_VERSION = "0.0.1";
 export const DEFAULT_POLL_INTERVAL_SECONDS = 60;
 
 /**
+ * Default number of Docker-backed self-hosted runners to provision.
+ *
+ * Six is the number that matches the five review agents + one implementation
+ * job firing simultaneously — chosen so a single PR's review pipeline does
+ * not starve behind a running implementation agent.
+ */
+export const DEFAULT_RUNNER_COUNT = 6;
+
+/**
  * Build the structured {@link ClawConfig} for a target repo.
  *
  * @param ref target repository the config belongs to
  * @param clawVersion version to stamp — defaults to {@link CURRENT_CLAW_VERSION}
+ * @param runnerCount runners to provision — defaults to {@link DEFAULT_RUNNER_COUNT}
  * @returns the config object
  */
 export function buildConfig(
   ref: RepoRef,
   clawVersion: string = CURRENT_CLAW_VERSION,
+  runnerCount: number = DEFAULT_RUNNER_COUNT,
 ): ClawConfig {
   return {
     repo: `${ref.owner}/${ref.repo}`,
     pollInterval: DEFAULT_POLL_INTERVAL_SECONDS,
     clawVersion,
+    runnerCount,
   };
 }
 
@@ -123,7 +140,13 @@ export async function readConfig(
     typeof shape.clawVersion === "string" && shape.clawVersion.length > 0
       ? shape.clawVersion
       : CURRENT_CLAW_VERSION;
-  return { repo, pollInterval, clawVersion };
+  const runnerCount =
+    typeof shape.runnerCount === "number" &&
+    Number.isInteger(shape.runnerCount) &&
+    shape.runnerCount > 0
+      ? shape.runnerCount
+      : DEFAULT_RUNNER_COUNT;
+  return { repo, pollInterval, clawVersion, runnerCount };
 }
 
 /** Default disk-backed config reader — returns `null` on any read error. */

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildProgram, parseLogEntryCount } from "../../src/cli/index.js";
+import {
+  buildProgram,
+  parseLogEntryCount,
+  parseRunnerCount,
+} from "../../src/cli/index.js";
 import { ClawError } from "../../src/core/types/errors.js";
 
 describe("buildProgram", () => {
@@ -35,13 +39,18 @@ describe("buildProgram", () => {
     expect(program.version()).toBe("0.0.1");
   });
 
-  it("declares --repo and --overwrite on setup", () => {
+  it("declares every v0.1 flag on setup", () => {
     const program = buildProgram();
     const setup = program.commands.find((command) => command.name() === "setup");
     expect(setup).toBeDefined();
     const flags = (setup?.options ?? []).map((option) => option.long);
     expect(flags).toContain("--repo");
     expect(flags).toContain("--overwrite");
+    expect(flags).toContain("--yes");
+    expect(flags).toContain("--skip-runners");
+    expect(flags).toContain("--runner-count");
+    expect(flags).toContain("--github-pat");
+    expect(flags).toContain("--claude-token");
   });
 
   it("declares --tail and --n on logs", () => {
@@ -80,6 +89,37 @@ describe("parseLogEntryCount", () => {
     let caught: unknown;
     try {
       parseLogEntryCount("ghp_not_a_real_token_but_pretend");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ClawError);
+    const message = (caught as ClawError).message;
+    expect(message).not.toContain("ghp_");
+  });
+});
+
+describe("parseRunnerCount", () => {
+  it("parses positive integers", () => {
+    expect(parseRunnerCount("6")).toBe(6);
+    expect(parseRunnerCount("12")).toBe(12);
+  });
+
+  it("throws ClawError on zero (runners must be at least 1)", () => {
+    expect(() => parseRunnerCount("0")).toThrow(ClawError);
+  });
+
+  it("throws ClawError on negative integers", () => {
+    expect(() => parseRunnerCount("-2")).toThrow(ClawError);
+  });
+
+  it("throws ClawError on non-numeric input", () => {
+    expect(() => parseRunnerCount("six")).toThrow(ClawError);
+  });
+
+  it("does not echo the raw input in the error (credential safety)", () => {
+    let caught: unknown;
+    try {
+      parseRunnerCount("ghp_leaky");
     } catch (err) {
       caught = err;
     }
