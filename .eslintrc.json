@@ -6,7 +6,7 @@
     "plugin:@typescript-eslint/recommended"
   ],
   "parserOptions": {
-    "project": "./tsconfig.json"
+    "project": ["./tsconfig.json", "./tsconfig.benchmark.json"]
   },
   "rules": {
     "@typescript-eslint/no-explicit-any": "error",
