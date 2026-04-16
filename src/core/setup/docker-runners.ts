@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, chmod } from "node:fs/promises";
 import { dirname } from "node:path";
 import { execa } from "execa";
 import type { Octokit } from "@octokit/rest";
@@ -41,6 +41,8 @@ export interface RunnerComposeFs {
   writeFile?: (path: string, content: string) => Promise<void>;
   /** Create `path` as a directory, recursively. */
   mkdir?: (path: string) => Promise<void>;
+  /** Restrict `path` to `mode` (POSIX). */
+  chmod?: (path: string, mode: number) => Promise<void>;
 }
 
 /** Input for {@link startRunners}. */
@@ -175,6 +177,7 @@ export async function generateRunnerComposeFile(
 ): Promise<void> {
   const write = options.fs?.writeFile ?? defaultWriteFile;
   const ensureDir = options.fs?.mkdir ?? defaultMkdir;
+  const restrict = options.fs?.chmod ?? defaultChmod;
   const content = renderComposeFile(options);
   try {
     await ensureDir(dirname(options.path));
@@ -186,6 +189,15 @@ export async function generateRunnerComposeFile(
       `could not write ${options.path}.`,
       `Check filesystem permissions. Underlying error: ${detail}`,
     );
+  }
+  // The compose file embeds CLAUDE_CODE_OAUTH_TOKEN in plaintext. Match the
+  // `writeEnvFile` convention and restrict to 0600 so other local users can
+  // not read it. Failure is tolerated on filesystems without POSIX mode bits
+  // (Windows FAT) — the file still exists, just without the UNIX guarantee.
+  try {
+    await restrict(options.path, 0o600);
+  } catch {
+    // Non-fatal by design.
   }
 }
 
@@ -264,6 +276,11 @@ async function defaultWriteFile(path: string, content: string): Promise<void> {
 /** Default mkdir — recursive, no error if the directory exists. */
 async function defaultMkdir(path: string): Promise<void> {
   await mkdir(path, { recursive: true });
+}
+
+/** Default chmod — pass-through to `node:fs/promises`. */
+async function defaultChmod(path: string, mode: number): Promise<void> {
+  await chmod(path, mode);
 }
 
 /** Default sleep — `setTimeout`-backed. */

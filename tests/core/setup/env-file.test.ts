@@ -44,12 +44,27 @@ describe("parseEnvFile", () => {
     expect(parsed.GITHUB_PAT).toBe("\"mis'");
   });
 
-  it("throws ClawError on a line missing `=`", () => {
-    expect(() => parseEnvFile("no_equals_sign_here\n")).toThrow(ClawError);
+  it("throws ClawError on a line missing `=` and names the line number", () => {
+    let caught: unknown;
+    try {
+      parseEnvFile("GITHUB_PAT=ok\nno_equals_sign_here\n");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ClawError);
+    // The 2nd line is the offender — the error must say so.
+    expect((caught as ClawError).message).toContain("line 2");
   });
 
-  it("throws ClawError when the line starts with `=`", () => {
-    expect(() => parseEnvFile("=value\n")).toThrow(ClawError);
+  it("throws ClawError when the line starts with `=` and names the line number", () => {
+    let caught: unknown;
+    try {
+      parseEnvFile("=value\n");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ClawError);
+    expect((caught as ClawError).message).toContain("line 1");
   });
 
   it("leaves GITHUB_PAT undefined when the file has only unknown keys", () => {
@@ -108,6 +123,17 @@ describe("readEnvFile", () => {
       readFile: async () => "GITHUB_PAT=ghp_real\n",
     });
     expect(env.GITHUB_PAT).toBe("ghp_real");
+  });
+
+  it("propagates malformed content as a ClawError through the reader", async () => {
+    // The seam is the reader, so a parse error from the underlying file
+    // surfaces to the caller — no silent `null` return that would mask a
+    // real problem in .claw/.env.
+    await expect(
+      readEnvFile("/tmp/malformed", {
+        readFile: async () => "no_equals_line\n",
+      }),
+    ).rejects.toBeInstanceOf(ClawError);
   });
 });
 

@@ -199,13 +199,24 @@ function stripSurroundingQuotes(value: string): string {
   return value;
 }
 
-/** Default disk-backed reader — returns `null` on any read error. */
+/**
+ * Default disk-backed reader — returns `null` on ENOENT (first-run case),
+ * re-throws any other error so permissions or I/O problems surface cleanly
+ * instead of being mis-reported as "file does not exist".
+ */
 async function defaultReadFile(path: string): Promise<string | null> {
   try {
     return await readFile(path, "utf8");
-  } catch {
-    return null;
+  } catch (err: unknown) {
+    if (isNotFound(err)) return null;
+    throw err;
   }
+}
+
+/** Narrow a thrown value to ENOENT. */
+function isNotFound(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  return (err as Record<string, unknown>)["code"] === "ENOENT";
 }
 
 /** Default disk-backed writer — creates the file if it does not exist. */

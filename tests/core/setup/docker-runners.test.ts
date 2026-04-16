@@ -107,6 +107,51 @@ describe("generateRunnerComposeFile", () => {
     expect(mkdirs).toContain("/tmp/proj/.claw/runners");
   });
 
+  it("chmods the compose file to 0600 (same as .claw/.env)", async () => {
+    // The compose file embeds CLAUDE_CODE_OAUTH_TOKEN in plaintext, so it
+    // must not be world-readable on multi-user systems. Matches the
+    // writeEnvFile convention.
+    const chmods: Array<{ path: string; mode: number }> = [];
+    await generateRunnerComposeFile({
+      ref,
+      runnerCount: 1,
+      registrationToken: "r",
+      claudeToken: "c",
+      path: "/tmp/proj/.claw/runners/docker-compose.yml",
+      fs: {
+        writeFile: async () => {},
+        mkdir: async () => {},
+        chmod: async (path, mode) => {
+          chmods.push({ path, mode });
+        },
+      },
+    });
+    expect(chmods).toEqual([
+      { path: "/tmp/proj/.claw/runners/docker-compose.yml", mode: 0o600 },
+    ]);
+  });
+
+  it("tolerates chmod failure (Windows FAT compatibility)", async () => {
+    // Same tolerance as writeEnvFile — a missing POSIX mode bit must not
+    // fail the whole setup flow.
+    await expect(
+      generateRunnerComposeFile({
+        ref,
+        runnerCount: 1,
+        registrationToken: "r",
+        claudeToken: "c",
+        path: "/tmp/proj/.claw/runners/docker-compose.yml",
+        fs: {
+          writeFile: async () => {},
+          mkdir: async () => {},
+          chmod: async () => {
+            throw new Error("ENOSYS");
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("lifts write errors into ClawError", async () => {
     await expect(
       generateRunnerComposeFile({

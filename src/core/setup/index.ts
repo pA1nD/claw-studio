@@ -4,7 +4,7 @@ import { createClient } from "../github/client.js";
 import type { RepoRef } from "../github/repo-detect.js";
 import { canAccessRepoVia, runPreflight } from "./preflight.js";
 import type { PreflightDeps } from "./preflight.js";
-import { buildConfig, serializeConfig } from "./config.js";
+import { buildConfig, DEFAULT_RUNNER_COUNT, serializeConfig } from "./config.js";
 import { generateClaudeMd } from "./claude-md.js";
 import type { GenerateClaudeMdDeps } from "./claude-md.js";
 import { loadCiTemplate } from "./ci-template.js";
@@ -173,50 +173,36 @@ export async function runSetup(options: RunSetupOptions): Promise<boolean> {
     skipRunners = false,
   } = options;
 
-  // 1. Preflight — everything except repo-access runs from local state so
-  //    we can fail fast before touching GitHub. Repo access runs here too
-  //    because token resolution happens next and we want the clearest error
-  //    surface when the user forgot to pass a token.
-  hooks.onPhase?.("preflight");
-  // Use a placeholder client only for the repo-access check; we build the
-  // real one from the resolved PAT in the next step.
-  const preflightClient = options.deps?.makeOctokit
-    ? options.deps.makeOctokit("preflight-placeholder")
-    : null;
-  await runPreflight({
-    ref,
-    cwd,
-    overwrite,
-    deps: {
-      canAccessRepo:
-        options.deps?.preflight?.canAccessRepo ??
-        (preflightClient ? canAccessRepoVia(preflightClient) : undefined),
-      fileExists: options.deps?.preflight?.fileExists,
-    },
-  });
-
-  // 2. Resolve tokens — flag > env > .claw/.env > halt
+  // 1. Resolve tokens first — we need the PAT to build the Octokit that
+  //    runs every GitHub-backed preflight and setup step. Tokens come from
+  //    flag > env > .claw/.env > halt.
   hooks.onPhase?.("resolving-tokens");
   const resolved = await resolveTokens(cwd, options.tokens ?? {}, {
     ...options.deps?.tokens,
     envFileFs: options.deps?.tokens?.envFileFs ?? options.deps?.envFile,
   });
 
-  // Build the Octokit now that we have the real PAT. Tests inject a factory
-  // that ignores the PAT and returns a spy-friendly stub.
+  // 2. Build the Octokit from the resolved PAT. Tests inject a factory
+  //    that ignores the PAT and returns a spy-friendly stub.
   const octokit: Octokit = options.deps?.makeOctokit
     ? options.deps.makeOctokit(resolved.githubPat.value)
     : createClient({ readToken: () => resolved.githubPat.value });
 
-  // Make the resolved PAT visible to every downstream module that reads
-  // `process.env.GITHUB_PAT` (the loop, the inspector, the PR monitor).
-  // We only mutate when the value differs — no surprise clobber of whatever
-  // the caller had set explicitly for this invocation.
-  if (process.env["GITHUB_PAT"] !== resolved.githubPat.value) {
-    process.env["GITHUB_PAT"] = resolved.githubPat.value;
-  }
+  // 3. Preflight — runs with the real Octokit so CHECK 1 (repo accessible)
+  //    can actually hit the API. Earlier checks are local-only.
+  hooks.onPhase?.("preflight");
+  await runPreflight({
+    ref,
+    cwd,
+    overwrite,
+    deps: {
+      canAccessRepo:
+        options.deps?.preflight?.canAccessRepo ?? canAccessRepoVia(octokit),
+      fileExists: options.deps?.preflight?.fileExists,
+    },
+  });
 
-  // 3. Confirmation — surface the plan, bail out cleanly if the human says no.
+  // 4. Confirmation — surface the plan, bail out cleanly if the human says no.
   const paths = resolveSetupPaths(cwd);
   const runnerCount = resolveRunnerCount(options.runnerCount);
   const plan = buildSetupPlan(ref, overwrite, { skipRunners, runnerCount });
@@ -227,7 +213,7 @@ export async function runSetup(options: RunSetupOptions): Promise<boolean> {
     }
   }
 
-  // 4. Tracked writes — rollback is atomic across every tracked artifact.
+  // 5. Tracked writes — rollback is atomic across every tracked artifact.
   const tracker = new WriteTracker(options.deps?.fs);
   try {
     hooks.onPhase?.("writing-env");
@@ -358,7 +344,7 @@ async function writeResolvedTokens(options: {
  * when it is not passed. Any invalid value halts before any side effect.
  */
 function resolveRunnerCount(requested: number | undefined): number {
-  if (requested === undefined) return 6;
+  if (requested === undefined) return DEFAULT_RUNNER_COUNT;
   if (!Number.isInteger(requested) || requested <= 0) {
     throw new ClawError(
       `invalid --runner-count: ${requested}.`,
@@ -382,7 +368,7 @@ export function buildSetupPlan(
   options: { skipRunners?: boolean; runnerCount?: number } = {},
 ): SetupPlan {
   const skipRunners = options.skipRunners ?? false;
-  const runnerCount = skipRunners ? 0 : (options.runnerCount ?? 6);
+  const runnerCount = skipRunners ? 0 : (options.runnerCount ?? DEFAULT_RUNNER_COUNT);
   const filesToCreate: string[] = [
     ".claw/.env",
     ".claw/CLAUDE.md",

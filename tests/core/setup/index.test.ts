@@ -296,8 +296,8 @@ describe("runSetup — happy path", () => {
     expect(scenario.composeUpCalls).toEqual([paths.composeFile]);
 
     expect(scenario.phases).toEqual([
-      "preflight",
       "resolving-tokens",
+      "preflight",
       "writing-env",
       "writing-config",
       "writing-gitignore",
@@ -379,6 +379,19 @@ describe("runSetup — preflight failures", () => {
     const scenario = buildScenario({ canAccessRepo: async () => false });
     await expect(scenario.runSetup()).rejects.toBeInstanceOf(ClawError);
     expect(scenario.writes.size).toBe(0);
+  });
+
+  it("resolves tokens BEFORE preflight so CHECK 1 uses the real Octokit", async () => {
+    // Regression guard: an earlier cut of this PR ran preflight before the
+    // token was resolved, leaving CHECK 1 without a real Octokit in
+    // production and halting every setup run at "cannot access repo." The
+    // phase order proves the fix — resolving-tokens must come first.
+    const scenario = buildScenario();
+    await scenario.runSetup();
+    const tokens = scenario.phases.indexOf("resolving-tokens");
+    const preflight = scenario.phases.indexOf("preflight");
+    expect(tokens).toBeGreaterThan(-1);
+    expect(preflight).toBeGreaterThan(tokens);
   });
 });
 

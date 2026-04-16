@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { loadDotenvIntoProcessEnv } from "../../../src/core/setup/dotenv-loader.js";
+import { ClawError } from "../../../src/core/types/errors.js";
 
 describe("loadDotenvIntoProcessEnv", () => {
   it("reports found=false when .claw/.env is missing", async () => {
@@ -52,5 +53,16 @@ describe("loadDotenvIntoProcessEnv", () => {
     });
     expect(result.path).toContain(".claw");
     expect(result.path.endsWith(".env")).toBe(true);
+  });
+
+  it("propagates ClawError when .claw/.env has a malformed line", async () => {
+    // The loader intentionally does not swallow parse errors — a real
+    // problem with .claw/.env must halt the CLI at entry, not surface
+    // later as a confusing "token missing" diagnostic.
+    await expect(
+      loadDotenvIntoProcessEnv("/tmp/proj", {}, {
+        readFile: async () => "no_equals_line\n",
+      }),
+    ).rejects.toBeInstanceOf(ClawError);
   });
 });
