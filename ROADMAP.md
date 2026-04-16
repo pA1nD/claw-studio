@@ -285,6 +285,37 @@ handling a repo that already has open PRs and partial work in progress
 
 ---
 
+## v0.1.1 — Refactoring
+*Clean up the engine before building on top of it.*
+
+Post-loop refactoring. The engine works (v0.1 proved it). Now simplify the internals before
+the dashboard adds a second consumer of every API surface.
+
+| Issue | What |
+|---|---|
+| #33 | Agent opens PR — move PR creation from orchestrator to implementation agent |
+| #34 | Generic prompts — remove context injection, let the agent read its own codebase |
+
+### What changes
+
+**Agent opens PR (#33):** The implementation agent opens the PR itself via `gh pr create` instead
+of the orchestrator calling `pulls.create` after the subprocess exits. Removes ~100 lines of
+orchestrator code and one dependency seam. The orchestrator discovers the PR on the next poll
+cycle — same path it already uses for every other PR state.
+
+**Generic prompts (#34):** The 5,000-token hand-built prompt (README + ROADMAP + sibling issues +
+prior review notes concatenated into stdin) becomes a 50-token directive: "Implement issue #N.
+Read the project docs yourself." Claude Code reads files natively — injecting them is paying for
+tokens the agent would have consumed for free from the local checkout. Prior review notes are
+discovered by the agent instead of pre-fetched by the orchestrator.
+
+### Done when
+Both issues merged. The E2E benchmark (issue #31) re-run with the new prompts produces a
+composite score within 0.1 of the v0.1 baseline — proving the simplification didn't degrade
+output quality.
+
+---
+
 ## v0.2 — Single Project Dashboard
 *The loop made visible.*
 
