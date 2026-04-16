@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { Header } from "./ui/components/Header.js";
@@ -194,11 +195,33 @@ export async function main(argv: readonly string[] = process.argv): Promise<void
   }
 }
 
+/**
+ * Determine whether the current module was invoked as a CLI binary.
+ *
+ * `npm install -g` creates a symlink (e.g. `/usr/local/bin/claw` →
+ * `dist/cli/index.js`). A raw `pathToFileURL(process.argv[1])` comparison
+ * against `import.meta.url` fails because the symlink path differs from
+ * the real file URL. `realpathSync` resolves the symlink first; the
+ * `catch` fallback handles the edge case where the path does not exist on
+ * disk (e.g. a test harness fabricating an `argv`).
+ *
+ * Exported so every branch is testable without stubbing Node internals.
+ *
+ * @param entryPath `process.argv[1]` — the path the runtime was invoked with
+ * @param metaUrl   `import.meta.url` of the calling module
+ * @returns true when the module is the direct entry point
+ */
+export function resolveInvokedDirectly(entryPath: unknown, metaUrl: string): boolean {
+  if (typeof entryPath !== "string") return false;
+  try {
+    return metaUrl === pathToFileURL(realpathSync(entryPath)).href;
+  } catch {
+    return metaUrl === pathToFileURL(entryPath).href;
+  }
+}
+
 // Run immediately when invoked as a binary. The guard keeps the module
 // importable from tests without side effects.
-const entryPath = process.argv[1];
-const invokedDirectly =
-  typeof entryPath === "string" && import.meta.url === pathToFileURL(entryPath).href;
-if (invokedDirectly) {
+if (resolveInvokedDirectly(process.argv[1], import.meta.url)) {
   void main();
 }
