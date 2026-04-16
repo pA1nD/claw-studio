@@ -288,31 +288,40 @@ handling a repo that already has open PRs and partial work in progress
 ## v0.1.1 — Refactoring
 *Clean up the engine before building on top of it.*
 
-Post-loop refactoring. The engine works (v0.1 proved it). Now simplify the internals before
-the dashboard adds a second consumer of every API surface.
+The engine works. v0.1 proved it. Before the dashboard (v0.2) adds a second consumer of every
+internal surface, simplify the internals — fewer moving parts, less token waste, more trust in
+the agent's native capabilities.
 
-| Issue | What |
-|---|---|
-| #33 | Agent opens PR — move PR creation from orchestrator to implementation agent |
-| #34 | Generic prompts — remove context injection, let the agent read its own codebase |
+### Agent-owned PR lifecycle
 
-### What changes
+The implementation agent opens its own pull request at the end of each implementation run. The
+orchestrator no longer creates PRs on the agent's behalf — it discovers them on the next poll
+cycle, the same way it already handles every other PR state. This removes a layer of
+orchestration code and lets the agent use its natural `gh pr create` workflow instead of being
+told "push but don't open a PR."
 
-**Agent opens PR (#33):** The implementation agent opens the PR itself via `gh pr create` instead
-of the orchestrator calling `pulls.create` after the subprocess exits. Removes ~100 lines of
-orchestrator code and one dependency seam. The orchestrator discovers the PR on the next poll
-cycle — same path it already uses for every other PR state.
+The orchestrator retains a fallback: if the agent pushes a branch but fails to open a PR, the
+existing "branch without PR" check (CHECK 8) catches it and the orchestrator opens the PR as a
+recovery step.
 
-**Generic prompts (#34):** The 5,000-token hand-built prompt (README + ROADMAP + sibling issues +
-prior review notes concatenated into stdin) becomes a 50-token directive: "Implement issue #N.
-Read the project docs yourself." Claude Code reads files natively — injecting them is paying for
-tokens the agent would have consumed for free from the local checkout. Prior review notes are
-discovered by the agent instead of pre-fetched by the orchestrator.
+### Lightweight prompts
+
+The hand-built prompt that concatenates README, ROADMAP, sibling issues, and prior review notes
+into a single stdin payload (~5,000–10,000 tokens per spawn) is replaced by a short directive
+that tells the agent what to implement and lets it read the codebase itself. Claude Code
+navigates files natively — injecting their contents into the prompt is paying for tokens the
+agent would have consumed for free from the local checkout.
+
+Prior review notes from merged PRs are no longer pre-fetched by the orchestrator. The prompt
+instructs the agent to check recent PR history for relevant feedback, and the agent discovers
+it through its own file and API exploration.
+
+The fix prompt is unchanged — review comments are still injected directly, because the agent
+needs to see the exact feedback without hunting for it.
 
 ### Done when
-Both issues merged. The E2E benchmark (issue #31) re-run with the new prompts produces a
-composite score within 0.1 of the v0.1 baseline — proving the simplification didn't degrade
-output quality.
+The E2E benchmark (v0.1 baseline) re-run with the simplified internals produces a composite
+score within 0.1 of the original — proving the refactoring didn't degrade output quality.
 
 ---
 
