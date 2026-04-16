@@ -1,9 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Command } from "commander";
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import {
   buildProgram,
   parseLogEntryCount,
   parseRunnerCount,
+  resolveInvokedDirectly,
 } from "../../src/cli/index.js";
 import { ClawError } from "../../src/core/types/errors.js";
 
@@ -140,6 +143,37 @@ describe("parseLogEntryCount", () => {
     expect(caught).toBeInstanceOf(ClawError);
     const message = (caught as ClawError).message;
     expect(message).not.toContain("ghp_");
+  });
+});
+
+describe("resolveInvokedDirectly", () => {
+  it("returns false when entryPath is not a string", () => {
+    expect(resolveInvokedDirectly(undefined, "file:///x")).toBe(false);
+    expect(resolveInvokedDirectly(42, "file:///x")).toBe(false);
+    expect(resolveInvokedDirectly(null, "file:///x")).toBe(false);
+  });
+
+  it("returns true when realpathSync resolves to the matching file", () => {
+    // Use a real path — realpathSync is a no-op on already-resolved paths.
+    const real = realpathSync(process.argv[1] ?? __filename);
+    const metaUrl = pathToFileURL(real).href;
+    expect(resolveInvokedDirectly(real, metaUrl)).toBe(true);
+  });
+
+  it("returns false when the resolved path does not match metaUrl", () => {
+    const real = realpathSync(process.argv[1] ?? __filename);
+    expect(resolveInvokedDirectly(real, "file:///some/other/module.js")).toBe(false);
+  });
+
+  it("falls back to raw path when realpathSync throws (path does not exist)", () => {
+    const fake = "/nonexistent/path/to/claw";
+    const metaUrl = pathToFileURL(fake).href;
+    expect(resolveInvokedDirectly(fake, metaUrl)).toBe(true);
+  });
+
+  it("returns false on the fallback path when the raw path does not match either", () => {
+    const fake = "/nonexistent/path/to/claw";
+    expect(resolveInvokedDirectly(fake, "file:///other")).toBe(false);
   });
 });
 
