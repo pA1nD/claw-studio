@@ -1,17 +1,20 @@
+import { setStopFlag } from "../../core/loop/control.js";
 import { Success } from "../ui/components/Success.js";
 import { renderOnce } from "../ui/render.js";
 
 /**
- * `claw stop` — stub.
+ * `claw stop` — set the stop flag.
  *
- * Stops the loop cleanly. Real stop semantics are implemented alongside
- * the loop orchestrator in v0.1.
+ * The running loop checks the flag at the top of each iteration, so a stop is
+ * non-destructive: any in-flight implementation agent or fix run completes
+ * before the loop exits cleanly.
  */
 export async function stopCommand(): Promise<void> {
+  await setStopFlag(process.cwd());
   await renderOnce(
     <Success
-      message="stop"
-      detail="stub — the loop orchestrator is implemented in v0.1"
+      message="stop requested"
+      detail="the loop will exit after the current action — run `claw start` to launch a fresh loop."
     />,
   );
 }
