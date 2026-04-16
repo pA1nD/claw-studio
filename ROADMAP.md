@@ -285,6 +285,46 @@ handling a repo that already has open PRs and partial work in progress
 
 ---
 
+## v0.1.1 — Refactoring
+*Clean up the engine before building on top of it.*
+
+The engine works. v0.1 proved it. Before the dashboard (v0.2) adds a second consumer of every
+internal surface, simplify the internals — fewer moving parts, less token waste, more trust in
+the agent's native capabilities.
+
+### Agent-owned PR lifecycle
+
+The implementation agent opens its own pull request at the end of each implementation run. The
+orchestrator no longer creates PRs on the agent's behalf — it discovers them on the next poll
+cycle, the same way it already handles every other PR state. This removes a layer of
+orchestration code and lets the agent use its natural `gh pr create` workflow instead of being
+told "push but don't open a PR."
+
+The orchestrator retains a fallback: if the agent pushes a branch but fails to open a PR, the
+existing "branch without PR" check (CHECK 8) catches it and the orchestrator opens the PR as a
+recovery step.
+
+### Lightweight prompts
+
+The hand-built prompt that concatenates README, ROADMAP, sibling issues, and prior review notes
+into a single stdin payload (~5,000–10,000 tokens per spawn) is replaced by a short directive
+that tells the agent what to implement and lets it read the codebase itself. Claude Code
+navigates files natively — injecting their contents into the prompt is paying for tokens the
+agent would have consumed for free from the local checkout.
+
+Prior review notes from merged PRs are no longer pre-fetched by the orchestrator. The prompt
+instructs the agent to check recent PR history for relevant feedback, and the agent discovers
+it through its own file and API exploration.
+
+The fix prompt is unchanged — review comments are still injected directly, because the agent
+needs to see the exact feedback without hunting for it.
+
+### Done when
+The E2E benchmark (v0.1 baseline) re-run with the simplified internals produces a composite
+score within 0.1 of the original — proving the refactoring didn't degrade output quality.
+
+---
+
 ## v0.2 — Single Project Dashboard
 *The loop made visible.*
 
