@@ -195,10 +195,20 @@ export async function main(argv: readonly string[] = process.argv): Promise<void
 }
 
 // Run immediately when invoked as a binary. The guard keeps the module
-// importable from tests without side effects.
+// importable from tests without side effects. `realpathSync` resolves
+// the symlink that `npm install -g` creates (e.g. /usr/local/bin/claw →
+// dist/cli/index.js) so the check works whether invoked via the symlink
+// or directly.
+import { realpathSync } from "node:fs";
 const entryPath = process.argv[1];
-const invokedDirectly =
-  typeof entryPath === "string" && import.meta.url === pathToFileURL(entryPath).href;
+const invokedDirectly = (() => {
+  if (typeof entryPath !== "string") return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entryPath)).href;
+  } catch {
+    return import.meta.url === pathToFileURL(entryPath).href;
+  }
+})();
 if (invokedDirectly) {
   void main();
 }
