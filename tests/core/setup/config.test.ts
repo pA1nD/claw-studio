@@ -3,6 +3,7 @@ import {
   buildConfig,
   CURRENT_CLAW_VERSION,
   DEFAULT_POLL_INTERVAL_SECONDS,
+  DEFAULT_RUNNER_COUNT,
   readConfig,
   serializeConfig,
 } from "../../../src/core/setup/config.js";
@@ -29,6 +30,17 @@ describe("buildConfig", () => {
     const config = buildConfig({ owner: "a", repo: "b" });
     expect(config.pollInterval).toBe(DEFAULT_POLL_INTERVAL_SECONDS);
     expect(config.pollInterval).toBe(60);
+  });
+
+  it("defaults runnerCount to the documented constant (6)", () => {
+    const config = buildConfig({ owner: "a", repo: "b" });
+    expect(config.runnerCount).toBe(DEFAULT_RUNNER_COUNT);
+    expect(config.runnerCount).toBe(6);
+  });
+
+  it("accepts an explicit runnerCount override", () => {
+    const config = buildConfig({ owner: "a", repo: "b" }, undefined, 12);
+    expect(config.runnerCount).toBe(12);
   });
 });
 
@@ -153,5 +165,32 @@ describe("readConfig", () => {
         JSON.stringify({ repo: DETECTED, clawVersion: "" }),
     });
     expect(empty.clawVersion).toBe(CURRENT_CLAW_VERSION);
+  });
+
+  it("falls back to the default runnerCount when the field is missing or invalid", async () => {
+    const missing = await readConfig(CWD, DETECTED, {
+      readFile: async () => JSON.stringify({ repo: DETECTED }),
+    });
+    expect(missing.runnerCount).toBe(DEFAULT_RUNNER_COUNT);
+
+    const zero = await readConfig(CWD, DETECTED, {
+      readFile: async () =>
+        JSON.stringify({ repo: DETECTED, runnerCount: 0 }),
+    });
+    expect(zero.runnerCount).toBe(DEFAULT_RUNNER_COUNT);
+
+    const nonInteger = await readConfig(CWD, DETECTED, {
+      readFile: async () =>
+        JSON.stringify({ repo: DETECTED, runnerCount: 3.5 }),
+    });
+    expect(nonInteger.runnerCount).toBe(DEFAULT_RUNNER_COUNT);
+  });
+
+  it("honours a positive integer runnerCount override", async () => {
+    const result = await readConfig(CWD, DETECTED, {
+      readFile: async () =>
+        JSON.stringify({ repo: DETECTED, runnerCount: 10 }),
+    });
+    expect(result.runnerCount).toBe(10);
   });
 });

@@ -20,6 +20,21 @@ describe("resolveSetupPaths", () => {
     expect(paths.workflowsDir).toBe(join(cwd, ".github", "workflows"));
     expect(paths.ciYml).toBe(join(cwd, ".github", "workflows", "ci.yml"));
   });
+
+  it("exposes .claw/.env for token persistence", () => {
+    expect(paths.envFile).toBe(join(cwd, ".claw", ".env"));
+  });
+
+  it("exposes .claw/runners/docker-compose.yml for the Docker runner pool", () => {
+    expect(paths.runnersDir).toBe(join(cwd, ".claw", "runners"));
+    expect(paths.composeFile).toBe(
+      join(cwd, ".claw", "runners", "docker-compose.yml"),
+    );
+  });
+
+  it("exposes the .gitignore at the project root (never inside .claw)", () => {
+    expect(paths.gitignore).toBe(join(cwd, ".gitignore"));
+  });
 });
 
 describe("resolveRequiredPaths", () => {

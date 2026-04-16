@@ -1,0 +1,272 @@
+import { writeFile, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
+import { execa } from "execa";
+import type { Octokit } from "@octokit/rest";
+import { ClawError } from "../types/errors.js";
+import type { RepoRef } from "../github/repo-detect.js";
+import { hasOnlineRunner } from "./runners.js";
+
+/** Docker image used for every self-hosted runner we manage. */
+export const RUNNER_IMAGE = "myoung34/github-runner:latest";
+
+/** Default wait for at least one runner to report `status: online`. */
+export const RUNNER_ONLINE_TIMEOUT_MS = 120_000;
+
+/** Default poll interval while waiting for a runner to come online. */
+export const RUNNER_POLL_INTERVAL_MS = 3_000;
+
+/** Input for {@link renderComposeFile}. */
+export interface RenderComposeFileOptions {
+  /** Target repository — embedded as `REPO_URL`. */
+  ref: RepoRef;
+  /** Number of runner services to define. */
+  runnerCount: number;
+  /** Short-lived registration token from the Actions API. */
+  registrationToken: string;
+  /** Claude Code OAuth token — exposed to every runner as an env var. */
+  claudeToken: string;
+}
+
+/** Input for {@link generateRunnerComposeFile}. */
+export interface GenerateRunnerComposeFileOptions extends RenderComposeFileOptions {
+  /** Absolute path of the compose file to write. */
+  path: string;
+  /** Injectable filesystem seam. */
+  fs?: RunnerComposeFs;
+}
+
+/** Filesystem seam for the compose-file writer. */
+export interface RunnerComposeFs {
+  /** Write `content` to `path` as UTF-8. */
+  writeFile?: (path: string, content: string) => Promise<void>;
+  /** Create `path` as a directory, recursively. */
+  mkdir?: (path: string) => Promise<void>;
+}
+
+/** Input for {@link startRunners}. */
+export interface StartRunnersOptions {
+  /** Target repository — also used to poll runner online status. */
+  ref: RepoRef;
+  /** Octokit from `createClient()` — used for the online-state poll. */
+  octokit: Pick<Octokit, "actions">;
+  /** Absolute path of the compose file. */
+  composeFile: string;
+  /** How long to wait for a runner to come online before halting. */
+  timeoutMs?: number;
+  /** Poll interval while waiting. */
+  pollIntervalMs?: number;
+  /** Injectable seams for tests. */
+  deps?: StartRunnersDeps;
+}
+
+/** Input for {@link requestRunnerRegistrationToken}. */
+export interface RequestRunnerRegistrationTokenOptions {
+  /** Target repository. */
+  ref: RepoRef;
+  /** Octokit from `createClient()`. */
+  octokit: Pick<Octokit, "actions">;
+}
+
+/** Dependency seams so start-runners can be unit-tested without Docker. */
+export interface StartRunnersDeps {
+  /** Run `docker compose up -d -f <composeFile>` — tests inject a stub. */
+  composeUp?: (composeFile: string) => Promise<void>;
+  /** Check that Docker is available. Returns true when `docker --version` succeeds. */
+  dockerAvailable?: () => Promise<boolean>;
+  /** Poll for at least one online runner. Defaults to {@link hasOnlineRunner}. */
+  pollOnline?: () => Promise<boolean>;
+  /** Sleep helper — injected so tests can drive the polling loop. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Time source for the timeout — injected so tests can freeze the clock. */
+  now?: () => number;
+}
+
+/**
+ * Render the compose YAML for `runnerCount` ephemeral self-hosted runners.
+ *
+ * The file is a pure function of its inputs — no clocks, no randomness —
+ * so repeated calls produce identical bytes and tests can assert against
+ * the full content. Runners use `myoung34/github-runner`, the same image
+ * the community has used for years for this pattern.
+ *
+ * @param options ref + count + registration token + Claude token
+ * @returns the compose file contents, ready to write
+ * @throws {ClawError} when `runnerCount` is not a positive integer
+ */
+export function renderComposeFile(options: RenderComposeFileOptions): string {
+  const { ref, runnerCount, registrationToken, claudeToken } = options;
+  if (!Number.isInteger(runnerCount) || runnerCount <= 0) {
+    throw new ClawError(
+      `invalid runnerCount: ${runnerCount}.`,
+      "Pass --runner-count <N> with a positive integer, or edit .claw/config.json.",
+    );
+  }
+  const repoUrl = `https://github.com/${ref.owner}/${ref.repo}`;
+  const services: string[] = [];
+  for (let i = 1; i <= runnerCount; i += 1) {
+    services.push(
+      [
+        `  claw-runner-${i}:`,
+        `    image: ${RUNNER_IMAGE}`,
+        `    restart: unless-stopped`,
+        `    environment:`,
+        `      REPO_URL: "${repoUrl}"`,
+        `      RUNNER_NAME: "claw-${i}"`,
+        `      RUNNER_SCOPE: "repo"`,
+        `      LABELS: "self-hosted,claw"`,
+        `      EPHEMERAL: "true"`,
+        `      ACCESS_TOKEN: "${registrationToken}"`,
+        `      CLAUDE_CODE_OAUTH_TOKEN: "${claudeToken}"`,
+        `    volumes:`,
+        `      - /var/run/docker.sock:/var/run/docker.sock`,
+      ].join("\n"),
+    );
+  }
+  return [
+    `# Generated by claw setup — do not edit by hand.`,
+    `# Regenerate with \`claw setup --overwrite\`.`,
+    `services:`,
+    services.join("\n"),
+    ``,
+  ].join("\n");
+}
+
+/**
+ * Obtain a fresh runner registration token from the Actions API.
+ *
+ * Tokens are short-lived (~1 hour) by GitHub policy, which is why we fetch
+ * a new one each time `claw setup` runs rather than persisting anything.
+ *
+ * @throws {ClawError} when the API call fails
+ */
+export async function requestRunnerRegistrationToken(
+  options: RequestRunnerRegistrationTokenOptions,
+): Promise<string> {
+  const { ref, octokit } = options;
+  try {
+    const { data } = await octokit.actions.createRegistrationTokenForRepo({
+      owner: ref.owner,
+      repo: ref.repo,
+    });
+    if (typeof data.token !== "string" || data.token.length === 0) {
+      throw new ClawError(
+        `GitHub returned no runner registration token for ${ref.owner}/${ref.repo}.`,
+        "Retry `claw setup`. If this persists, check your PAT has admin access.",
+      );
+    }
+    return data.token;
+  } catch (err: unknown) {
+    if (err instanceof ClawError) throw err;
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new ClawError(
+      `could not request a runner registration token for ${ref.owner}/${ref.repo}.`,
+      `Check that your PAT has admin access to the repo. Underlying error: ${detail}`,
+    );
+  }
+}
+
+/**
+ * Write the generated compose file to disk, creating `.claw/runners/` if needed.
+ *
+ * @throws {ClawError} when the file cannot be written
+ */
+export async function generateRunnerComposeFile(
+  options: GenerateRunnerComposeFileOptions,
+): Promise<void> {
+  const write = options.fs?.writeFile ?? defaultWriteFile;
+  const ensureDir = options.fs?.mkdir ?? defaultMkdir;
+  const content = renderComposeFile(options);
+  try {
+    await ensureDir(dirname(options.path));
+    await write(options.path, content);
+  } catch (err: unknown) {
+    if (err instanceof ClawError) throw err;
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new ClawError(
+      `could not write ${options.path}.`,
+      `Check filesystem permissions. Underlying error: ${detail}`,
+    );
+  }
+}
+
+/**
+ * Start the runners via `docker compose up -d` and poll the Actions API
+ * until at least one runner reports `status: online` (or the timeout
+ * elapses). Halts the loop cleanly with a {@link ClawError} on every
+ * failure mode: Docker missing, compose up fails, timeout.
+ *
+ * @throws {ClawError} on any failure — never crashes the process
+ */
+export async function startRunners(options: StartRunnersOptions): Promise<void> {
+  const { ref, octokit, composeFile } = options;
+  const timeoutMs = options.timeoutMs ?? RUNNER_ONLINE_TIMEOUT_MS;
+  const pollIntervalMs = options.pollIntervalMs ?? RUNNER_POLL_INTERVAL_MS;
+  const composeUp = options.deps?.composeUp ?? defaultComposeUp;
+  const dockerAvailable = options.deps?.dockerAvailable ?? defaultDockerAvailable;
+  const pollOnline =
+    options.deps?.pollOnline ?? (async () => hasOnlineRunner({ ref, octokit }));
+  const sleep = options.deps?.sleep ?? defaultSleep;
+  const now = options.deps?.now ?? Date.now;
+
+  if (!(await dockerAvailable())) {
+    throw new ClawError(
+      "Docker is required for self-hosted runners.",
+      "Install Docker Desktop or pass --skip-runners to manage runners manually.",
+    );
+  }
+
+  try {
+    await composeUp(composeFile);
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new ClawError(
+      "`docker compose up -d` failed.",
+      `Inspect the compose file at ${composeFile} and check Docker is running. Underlying error: ${detail}`,
+    );
+  }
+
+  const deadline = now() + timeoutMs;
+  // First check happens immediately — the happy path is "Docker started it
+  // and GitHub already saw it", no reason to burn a sleep interval before
+  // even trying.
+  if (await pollOnline()) return;
+  while (now() < deadline) {
+    await sleep(pollIntervalMs);
+    if (await pollOnline()) return;
+  }
+
+  throw new ClawError(
+    `runners did not come online within ${Math.round(timeoutMs / 1000)}s.`,
+    `Check Docker logs with: docker compose -f ${composeFile} logs`,
+  );
+}
+
+/** Default Docker availability probe — `docker --version` succeeds. */
+async function defaultDockerAvailable(): Promise<boolean> {
+  try {
+    await execa("docker", ["--version"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Default compose-up — runs `docker compose -f <path> up -d`. */
+async function defaultComposeUp(composeFile: string): Promise<void> {
+  await execa("docker", ["compose", "-f", composeFile, "up", "-d"]);
+}
+
+/** Default writer for the compose file. */
+async function defaultWriteFile(path: string, content: string): Promise<void> {
+  await writeFile(path, content, "utf8");
+}
+
+/** Default mkdir — recursive, no error if the directory exists. */
+async function defaultMkdir(path: string): Promise<void> {
+  await mkdir(path, { recursive: true });
+}
+
+/** Default sleep — `setTimeout`-backed. */
+async function defaultSleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}

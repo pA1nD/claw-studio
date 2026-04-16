@@ -11,14 +11,26 @@ export interface SetupPaths {
   clawDir: string;
   /** `.claw/CLAUDE.md` — generated agent instructions for this project. */
   claudeMd: string;
-  /** `.claw/config.json` — `{ repo, pollInterval, clawVersion }`. */
+  /** `.claw/config.json` — `{ repo, pollInterval, clawVersion, runnerCount }`. */
   configJson: string;
   /** `.claw/sessions/` — in-flight agent session state (created empty). */
   sessionsDir: string;
+  /**
+   * `.claw/.env` — `GITHUB_PAT` and `CLAUDE_CODE_OAUTH_TOKEN` persisted from
+   * `claw setup`. Loaded at CLI entrypoint so every command can use the
+   * tokens without requiring env vars on every invocation.
+   */
+  envFile: string;
+  /** `.claw/runners/` — directory holding the Docker runner compose file. */
+  runnersDir: string;
+  /** `.claw/runners/docker-compose.yml` — generated self-hosted runner config. */
+  composeFile: string;
   /** `.github/workflows/` — required for GitHub Actions to pick up `ci.yml`. */
   workflowsDir: string;
   /** `.github/workflows/ci.yml` — the full Claw Studio pipeline. */
   ciYml: string;
+  /** `.gitignore` at the project root — receives a `.claw/` entry if absent. */
+  gitignore: string;
 }
 
 /**
@@ -42,13 +54,18 @@ export interface RequiredPaths {
 export function resolveSetupPaths(cwd: string): SetupPaths {
   const clawDir = join(cwd, ".claw");
   const workflowsDir = join(cwd, ".github", "workflows");
+  const runnersDir = join(clawDir, "runners");
   return {
     clawDir,
     claudeMd: join(clawDir, "CLAUDE.md"),
     configJson: join(clawDir, "config.json"),
     sessionsDir: join(clawDir, "sessions"),
+    envFile: join(clawDir, ".env"),
+    runnersDir,
+    composeFile: join(runnersDir, "docker-compose.yml"),
     workflowsDir,
     ciYml: join(workflowsDir, "ci.yml"),
+    gitignore: join(cwd, ".gitignore"),
   };
 }
 

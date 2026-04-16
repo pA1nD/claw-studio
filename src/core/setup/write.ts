@@ -72,6 +72,21 @@ export class WriteTracker {
   }
 
   /**
+   * Record an artifact that was written outside the tracker (e.g. by a
+   * helper module that manages its own filesystem seam) so rollback still
+   * covers it.
+   *
+   * The tracker never touches disk during {@link track} — it only updates
+   * its in-memory list. Call this immediately after the external write
+   * succeeds; if the write failed, do not call this method.
+   *
+   * @param artifact path + kind of the external artifact
+   */
+  track(artifact: WriteArtifact): void {
+    this.created.push(artifact);
+  }
+
+  /**
    * Roll back every file and directory this tracker has created, in reverse
    * order, so nested directories unwind cleanly. Errors during rollback are
    * collected rather than thrown — the caller already has a primary failure

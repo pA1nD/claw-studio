@@ -1,12 +1,7 @@
 import { detectRepo } from "../../core/github/repo-detect.js";
 import { runSetup } from "../../core/setup/index.js";
-import type {
-  HumanStepContext,
-  SetupHooks,
-  SetupPlan,
-} from "../../core/setup/index.js";
+import type { SetupHooks, SetupPlan } from "../../core/setup/index.js";
 import { Confirm } from "../ui/components/Confirm.js";
-import { HumanStep } from "../ui/components/HumanStep.js";
 import { Success } from "../ui/components/Success.js";
 import { renderInteractive, renderOnce } from "../ui/render.js";
 
@@ -14,17 +9,24 @@ import { renderInteractive, renderOnce } from "../ui/render.js";
 export interface SetupOptions {
   repo?: string;
   overwrite?: boolean;
+  yes?: boolean;
+  skipRunners?: boolean;
+  runnerCount?: number;
+  githubPat?: string;
+  claudeToken?: string;
 }
 
 /**
  * `claw setup` — prepare a GitHub repo to run the Claw Studio loop.
  *
  * Detects the target repo, then hands off to {@link runSetup} to drive the
- * full flow: preflight → confirmation → writes → branch protection →
- * human steps. This command is the thin UI adapter; every decision lives
- * in `src/core/setup/`.
+ * full headless flow: preflight → resolve tokens → confirmation (unless
+ * `--yes`) → writes → branch protection → push Actions secret → start
+ * Docker runners (unless `--skip-runners`). This command is the thin UI
+ * adapter; every decision lives in `src/core/setup/`.
  *
- * @param options CLI options (`--repo`, `--overwrite`)
+ * @param options CLI options (`--repo`, `--overwrite`, `--yes`, `--skip-runners`,
+ *                `--runner-count`, `--github-pat`, `--claude-token`)
  * @throws {ClawError} on any failure — surfaced through the standard error view
  */
 export async function setupCommand(options: SetupOptions): Promise<void> {
@@ -34,6 +36,13 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     ref,
     cwd: process.cwd(),
     overwrite: Boolean(options.overwrite),
+    yes: Boolean(options.yes),
+    skipRunners: Boolean(options.skipRunners),
+    runnerCount: options.runnerCount,
+    tokens: {
+      githubPat: options.githubPat,
+      claudeToken: options.claudeToken,
+    },
     hooks: buildInkHooks(),
   });
 
@@ -56,8 +65,12 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
 }
 
 /**
- * Build the Ink-backed {@link SetupHooks} that drive the interactive parts of
- * the setup flow. Split out so tests can substitute non-interactive hooks.
+ * Build the Ink-backed {@link SetupHooks} for the setup flow.
+ *
+ * `claw setup` is headless by default — the runner registration and secret
+ * injection that used to require browser steps now happen via the GitHub
+ * API. The only remaining interactive step is the confirmation, which
+ * `--yes` removes entirely.
  */
 export function buildInkHooks(): SetupHooks {
   return {
@@ -69,33 +82,6 @@ export function buildInkHooks(): SetupHooks {
           onAnswer={resolve}
         />
       )),
-    walkRunnerStep: (context) =>
-      renderInteractive<void>((resolve) => (
-        <HumanStep
-          title="Runners — register at least one self-hosted runner"
-          reason="Claw Studio needs a self-hosted runner to fire review agents on every PR."
-          url={`${context.repoUrl}/settings/actions/runners/new`}
-          details={[
-            "Follow the GitHub instructions to register a runner on your machine,",
-            "then come back here and press <enter>.",
-          ]}
-          verify={context.verifyRunnerOnline}
-          onDone={() => resolve(undefined)}
-        />
-      )),
-    walkTokenStep: (context) =>
-      renderInteractive<void>((resolve) => (
-        <HumanStep
-          title="Claude token — add CLAUDE_CODE_OAUTH_TOKEN secret"
-          reason="Review agents call Claude via this token. Get it from `claude setup-token`."
-          url={`${context.repoUrl}/settings/secrets/actions/new`}
-          details={[
-            "Name the secret exactly `CLAUDE_CODE_OAUTH_TOKEN`.",
-            "Paste the token you generated with `claude setup-token`.",
-          ]}
-          onDone={() => resolve(undefined)}
-        />
-      )),
   };
 }
 
@@ -104,8 +90,14 @@ function buildConfirmLines(plan: SetupPlan): string[] {
   const created = plan.filesToCreate.map((path) => `  ${path}`);
   const checks = plan.requiredChecks.join(", ");
   const lines = ["Will create:", ...created, "", "Will configure:"];
-  lines.push(`  Branch protection on the default branch`);
+  lines.push("  Branch protection on the default branch");
   lines.push(`  Required checks: ${checks}`);
+  lines.push("  CLAUDE_CODE_OAUTH_TOKEN pushed as a repo Actions secret");
+  if (plan.skipRunners) {
+    lines.push("  (runners skipped — --skip-runners active)");
+  } else {
+    lines.push(`  ${plan.runnerCount} Docker-backed self-hosted runners`);
+  }
   if (plan.overwrite) {
     lines.push("");
     lines.push("  --overwrite active — existing Claw Studio files will be replaced.");
@@ -115,7 +107,5 @@ function buildConfirmLines(plan: SetupPlan): string[] {
 
 /**
  * Re-exported so tests can build the same hook shape without rendering Ink.
- * The re-export is intentional — `HumanStepContext` is a first-class part
- * of the `claw setup` public surface, not an internal detail.
  */
-export type { HumanStepContext, SetupHooks, SetupPlan };
+export type { SetupHooks, SetupPlan };

@@ -11,6 +11,7 @@ import { resumeCommand } from "./commands/resume.js";
 import { stopCommand } from "./commands/stop.js";
 import { logsCommand } from "./commands/logs.js";
 import { ClawError } from "../core/types/errors.js";
+import { loadDotenvIntoProcessEnv } from "../core/setup/dotenv-loader.js";
 
 const VERSION = "0.0.1";
 
@@ -37,9 +38,28 @@ export function buildProgram(): Command {
     .description("set up a repo for Claw Studio")
     .option("--repo <owner/repo>", "target GitHub repository")
     .option("--overwrite", "replace existing Claw Studio files", false)
-    .action(async (options: { repo?: string; overwrite?: boolean }) => {
-      await setupCommand(options);
-    });
+    .option("-y, --yes", "skip the confirmation prompt", false)
+    .option("--skip-runners", "do not provision Docker-backed self-hosted runners", false)
+    .option(
+      "--runner-count <n>",
+      "number of self-hosted runners to provision (default: 6)",
+      parseRunnerCount,
+    )
+    .option("--github-pat <token>", "override GITHUB_PAT for this invocation")
+    .option("--claude-token <token>", "override CLAUDE_CODE_OAUTH_TOKEN for this invocation")
+    .action(
+      async (options: {
+        repo?: string;
+        overwrite?: boolean;
+        yes?: boolean;
+        skipRunners?: boolean;
+        runnerCount?: number;
+        githubPat?: string;
+        claudeToken?: string;
+      }) => {
+        await setupCommand(options);
+      },
+    );
 
   program
     .command("start")
@@ -123,12 +143,48 @@ export function parseLogEntryCount(value: string): number {
 }
 
 /**
+ * Commander option coercion for `setup --runner-count <n>`.
+ *
+ * Parses the raw string into a positive integer. Throws a `ClawError` on any
+ * other input so the standard error view is rendered.
+ *
+ * @param value raw option value captured by Commander
+ * @returns the parsed positive integer
+ * @throws {ClawError} when the value is not a positive integer
+ */
+export function parseRunnerCount(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    throw new ClawError(
+      "invalid value for --runner-count.",
+      "Pass a positive integer (e.g. --runner-count 6).",
+    );
+  }
+  return parsed;
+}
+
+/**
  * Run the `claw` CLI.
  * Any uncaught error is converted to a ClawError and rendered via the
  * standard error view. Exit code is set to 1 on failure; the process is
  * never terminated with `process.exit` — the typed error system owns lifetime.
  */
 export async function main(argv: readonly string[] = process.argv): Promise<void> {
+  // Load .claw/.env so every command — `claw start`, `claw status`, the loop —
+  // picks up persisted GITHUB_PAT and CLAUDE_CODE_OAUTH_TOKEN automatically.
+  // Explicit env vars on this invocation still win: loadDotenvIntoProcessEnv
+  // only sets keys that are not already present in process.env.
+  try {
+    await loadDotenvIntoProcessEnv(process.cwd());
+  } catch (err) {
+    // A malformed .claw/.env is worth surfacing early — surface the error and
+    // exit, rather than letting every command fail with a downstream token-
+    // resolution error that points at a different symptom.
+    await renderError(err);
+    process.exitCode = 1;
+    return;
+  }
+
   const program = buildProgram();
   try {
     await program.parseAsync(argv as string[]);
